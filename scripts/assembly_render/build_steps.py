@@ -13,6 +13,10 @@ from render import Scene, render  # noqa: E402
 import jaw_m2_fig  # noqa: E402
 import ins_other_fig  # noqa: E402
 import servo_shaft_fig  # noqa: E402
+import lip_link_fig  # noqa: E402
+import link_id_fig  # noqa: E402
+import s3_chain_fig  # noqa: E402
+import brow_fig  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 S = Scene(os.path.join(ROOT, 'outputs/assembly/mesh.npz'))
@@ -307,7 +311,7 @@ STEPS.append(dict(
 STEPS.append(dict(
     key='brows', title='眉毛机构（模型里没画螺丝）', parts=[(g, (0.86, 0.82, 0.74)) for g in BROW] + [(g, C_SERVO) for g in BROW_SERVO],
     screws=[], letters={}, dir=(0.3, 0.9, -0.5), size=(1000, 640),
-    text='眉毛底板 Part_4 上装 4 个 MG90S（模型里只画了机器人右侧 2 个，左侧按镜像装），舵机带动 Part_2 / Part_3 小连杆，最外面是 TPU 软眉毛 Part_11 / Part_14。模型里没画螺丝：舵机用 M2×6 拧进底板的 M2 热熔螺母（见图 3）；连杆转轴如果是孔对孔，用 M2×6 / M2×8 加热熔螺母或者直接自攻。',
+    text='眉毛底板 Part_4 上装 4 个 MG90S（模型里只画了机器人右侧 2 个，左侧按镜像装），舵机带动 Part_3，Part_2 跟着转，两根连杆带动 4 个臂（Part_8 / 9 / 12 / 13），最外面是 TPU 软眉毛 Part_11 / Part_14。模型里没画螺丝，下面的表是按孔径和同轴关系推出来的。',
     rows=[],
 ))
 
@@ -434,7 +438,7 @@ def build():
                     + ''.join(f'<tr><td><b>{a}</b></td><td>{b}</td><td>{c}</td><td>{d}</td></tr>' for a, b, c, d in st['table'])
                     + '</tbody></table>')
         out.append(f'<section class="stp" id="{st["key"]}"><h3><input type="checkbox" data-k="fig-{st["key"]}"> 图 {i} · {html.escape(st["title"])}</h3>'
-                   f'<p>{st["text"]}</p>{ins_other_fig.html(S) if st["key"] == "ins_other" else '<div class="fig3d">' + svg + '</div>'}{rows}{jaw_m2_fig.html(S) if st["key"] == "ins_jaw" else ""}{servo_shaft_fig.html(S) if st["key"] == "mg996" else ""}</section>')
+                   f'<p>{st["text"]}</p>{ins_other_fig.html(S) if st["key"] == "ins_other" else '<div class="fig3d">' + svg + '</div>'}{rows}{jaw_m2_fig.html(S) if st["key"] == "ins_jaw" else ""}{servo_shaft_fig.html(S) if st["key"] == "mg996" else ""}{link_id_fig.html(S) if st["key"] == "m25" else ""}{lip_link_fig.html(S) if st["key"] == "m25" else ""}{s3_chain_fig.html(S) if st["key"] == "s3" else ""}{brow_fig.html(S) if st["key"] == "brows" else ""}</section>')
     frag = '\n'.join(out)
     open(os.path.join(OUT, 'steps_fragment.html'), 'w').write(frag)
     print('fragment', len(frag) // 1024, 'KB')

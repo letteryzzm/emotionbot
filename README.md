@@ -4,6 +4,13 @@
 
 基于 [Robot Head α2.0.33](https://willcogley.notion.site/Robot-Head-2-0-33-1d724779b64d80568fd9cf1c7abd3e64) 和 [EyeMech ε3.2](https://willcogley.notion.site/EyeMech-3-1-1af24779b64d80b19edfdd795d4b90e5)，作者 Will Cogley，协议 CC BY-NC-SA 4.0。本仓库的 PCB、打印件等衍生内容沿用同一协议，不得商用。
 
+上游 GitHub 仓库（作者账号 [will-cogley](https://github.com/will-cogley)）：
+
+| 仓库 | 内容 | 注意 |
+|---|---|---|
+| [will-cogley/RobotHead](https://github.com/will-cogley/RobotHead) | 摄像头人脸追踪、舵机编排代码，没有 STL 和 PCB | 上游代码目前只支持一个下颌舵机（`JAWLEFT`），本项目 JL、JR 都接；仓库未声明协议，复用代码前先确认授权 |
+| [will-cogley/EyeMech_Epsilon](https://github.com/will-cogley/EyeMech_Epsilon) | 眼部机构打印件、代码、装配 PDF、License | |
+
 ## 目录
 
 | 路径 | 内容 |
