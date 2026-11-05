@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机器人头焊接指南</title>
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#1d2321; --muted:#5f6b66; --line:#dfe3e0;
+  --accent:#0f7b5f; --accent-soft:#e2f2ec; --warn:#b4471f; --warn-soft:#fbeae2;
+  --chip:#eef1ef; --done:#2e8b57; --lcd:#c9d8b6; --lcd-ink:#18230f;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121614; --panel:#1b201e; --ink:#e7ece9; --muted:#9aa7a1; --line:#2c3431;
+    --accent:#4fc29a; --accent-soft:#1d3a30; --warn:#f08a63; --warn-soft:#3a2219;
+    --chip:#252c29; --done:#5fcf8f; --lcd:#a9bd93; --lcd-ink:#101a08;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121614; --panel:#1b201e; --ink:#e7ece9; --muted:#9aa7a1; --line:#2c3431;
+  --accent:#4fc29a; --accent-soft:#1d3a30; --warn:#f08a63; --warn-soft:#3a2219;
+  --chip:#252c29; --done:#5fcf8f; --lcd:#a9bd93; --lcd-ink:#101a08;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
+header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.01em}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button,.ctrl button{border:1px solid var(--line);background:var(--chip);color:var(--ink);padding:6px 12px;border-radius:8px;font:inherit;font-size:14px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.progress{margin-left:auto;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.bar{width:120px;height:6px;background:var(--chip);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--done);width:0;transition:width .4s}
+main>*{min-width:0}
+.stage{overflow:hidden}
+.svgwrap{min-width:0;width:100%}
+main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:0;min-height:calc(100vh - 58px)}
+.stage{position:sticky;top:58px;height:calc(100vh - 58px);display:flex;flex-direction:column;border-right:1px solid var(--line);background:radial-gradient(ellipse at center,#26302c 0%,#141917 75%)}
+.stage-top{display:flex;gap:8px;align-items:center;padding:10px 12px;color:#cfd8d3;font-size:13px;flex-wrap:wrap}
+.side-badge{padding:3px 10px;border-radius:999px;background:#ffffff1a;border:1px solid #ffffff33;font-weight:600}
+.side-badge.bottom{background:#3b5bdb33;border-color:#7d93ff88}
+.stage-top .sp{flex:1}
+.ctrl{display:flex;gap:6px}
+.ctrl button{background:#ffffff14;border-color:#ffffff2e;color:#e8eeeb}
+.ctrl button:hover{background:#ffffff26}
+.svgwrap{flex:1;min-height:0;perspective:1600px;display:flex;align-items:center;justify-content:center;padding:4px 10px 10px}
+#pcb{width:100%;height:100%;transition:transform .28s ease-in;transform-style:preserve-3d}
+#pcb.flip{transform:rotateY(90deg)}
+.readout{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:none;align-items:center;gap:12px;
+  background:#2a2f2b;border:2px solid #4a524c;border-radius:12px;padding:8px 14px;box-shadow:0 8px 24px #0008;color:#dfe6e1;font-size:13px;max-width:calc(100% - 32px)}
+.readout.show{display:flex}
+.readout .lcd{background:var(--lcd);color:var(--lcd-ink);font:700 20px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace;padding:6px 10px;border-radius:6px;min-width:120px;text-align:center;white-space:nowrap}
+.readout .mode{font-size:12px;color:#aab6af}
+.tip{position:fixed;pointer-events:none;background:#101412ee;color:#f1f5f3;border:1px solid #ffffff2a;padding:5px 9px;border-radius:7px;font-size:12.5px;z-index:50;display:none;white-space:nowrap}
+aside{padding:14px 16px 120px;overflow:auto}
+.group-h{font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:18px 4px 8px;font-weight:650}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0;cursor:pointer;transition:border-color .2s, box-shadow .2s}
+.card:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.card.done .num{background:var(--done);color:#fff}
+.card-h{display:flex;gap:10px;align-items:flex-start}
+.num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--chip);display:grid;place-items:center;font-size:13px;font-weight:700}
+.card-h h3{margin:2px 0 0;font-size:15px;font-weight:650;flex:1}
+.chk{flex:none;display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer}
+.chk input{width:16px;height:16px;accent-color:var(--done)}
+.body{display:none;margin:8px 0 0 36px;font-size:14px}
+.card.active .body{display:block}
+.body p{margin:6px 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{background:var(--chip);border-radius:6px;padding:2px 8px;font-size:12.5px}
+.chip b{font-family:ui-monospace,Menlo,monospace}
+.warn{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:7px 10px;margin:8px 0;font-size:13.5px}
+.note{background:var(--accent-soft);border-radius:8px;padding:7px 10px;margin:8px 0;font-size:13.5px}
+.opt{font-size:11px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-left:6px;vertical-align:2px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin:6px 0}
+td,th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+th{color:var(--muted);font-weight:600}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:var(--chip);padding:0 4px;border-radius:4px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;padding:0 12px 10px;color:#b9c4bf;font-size:12px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.intro{font-size:13.5px;color:var(--muted);margin:4px 4px 10px}
+/* SVG */
+.boardfill{fill:#195236;stroke:#0d2e1e;stroke-width:6}
+.trk{fill:none;stroke:#2c7a4b;stroke-linecap:round;opacity:.55}
+.trk.flow{stroke:var(--flow,#ffd43b);opacity:1;stroke-dasharray:28 18;animation:flow .9s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-46}}
+.pad{fill:#d4a94e;stroke:none;transition:fill .25s}
+.pad.hot{fill:#ffe08a}
+.pad.netglow{fill:var(--flow,#ffd43b)}
+.pad.soldered{fill:#e9edf1;stroke:#9aa3ab;stroke-width:3}
+.hole{fill:#0b0f0c}
+.silk{fill:none;stroke:#f2f2ec;stroke-linecap:round;stroke-linejoin:round}
+.silkf{fill:#f2f2ec}
+.stext{fill:#f2f2ec;font-family:ui-monospace,Menlo,monospace}
+.comp{transition:opacity .35s}
+.comp.dim{opacity:.28}
+.bodyshape{fill:var(--bc,#222);stroke:#000a;stroke-width:3;opacity:0;transition:opacity .45s, transform .45s;transform:translateY(-60px);transform-box:fill-box}
+.bodymark{fill:#ffffffcc;opacity:0;transition:opacity .45s}
+.comp.placed .bodyshape{opacity:.93;transform:none}
+.comp.placed .bodymark{opacity:.9}
+.comp.active.placed .bodyshape{opacity:.55}
+.hl{fill:none;stroke:#57e3b0;stroke-width:8;stroke-dasharray:22 12;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{stroke:#b8ffe6;stroke-width:12}}
+.skipx{stroke:#ff6b6b;stroke-width:7;fill:#ff6b6b18;stroke-dasharray:16 10}
+.blob{fill:#f5f7fa;stroke:#8c96a0;stroke-width:3;transform:scale(0);transform-box:fill-box;transform-origin:center;transition:transform .3s cubic-bezier(.3,1.6,.5,1)}
+.blob.on{transform:scale(1)}
+.spark{fill:none;stroke:#fff6;stroke-width:4;transform-box:fill-box;transform-origin:center;animation:spark .5s ease-out forwards}
+@keyframes spark{from{transform:scale(.3);opacity:1}to{transform:scale(2.2);opacity:0}}
+#iron{transition:transform .38s cubic-bezier(.45,.05,.3,1), opacity .3s;opacity:0;pointer-events:none}
+.co-line{stroke:#fff;stroke-width:4;fill:none;opacity:.9}
+.co-dot{fill:#fff}
+.co-box{fill:#101412ee;stroke:#ffffff55}
+.co-text{fill:#fff;font-family:-apple-system,"PingFang SC",sans-serif;font-weight:600}
+.co.warn .co-box{fill:#5a1e0fee;stroke:#ff9b73}
+.co.plus .co-box{fill:#0b4d39f0;stroke:#57e3b0}
+.probe-ring{fill:none;stroke-width:9}
+.pico{fill:#1e7a3e55;stroke:#7dffb0;stroke-width:6;stroke-dasharray:24 12}
+.pico-usb{fill:#c0c6cc;stroke:#555;stroke-width:3}
+.pico-t{fill:#d9ffe9;font-weight:700;font-family:-apple-system,sans-serif}
+@media (max-width:860px){
+  main{grid-template-columns:minmax(0,1fr)}
+  html,body{overflow-x:hidden}
+  .bar{width:70px}
+  .stage{position:sticky;top:0;height:56vh;z-index:10;border-right:none;border-bottom:1px solid var(--line)}
+  header{position:static}
+  aside{padding:10px 16px 80px}
+  .progress{margin-left:0}
+}
+html.ff *{transition:none!important;animation:none!important}
+@media (prefers-reduced-motion: reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>机器人头 PCB 焊接指南 · α2.0.33</h1>
+  <div class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-b="eye" aria-selected="true">眼眉板（×2 块）</button>
+    <button role="tab" data-b="mouth" aria-selected="false">嘴部板</button>
+  </div>
+  <div class="progress"><span id="ptext">0 / 0</span><div class="bar"><i id="pbar"></i></div></div>
+</header>
+<main>
+  <section class="stage">
+    <div class="stage-top">
+      <span class="side-badge" id="sidebadge">正面（Top）</span>
+      <span id="stagehint">点右侧步骤，或按 ← → 切换</span>
+      <span class="sp"></span>
+      <div class="ctrl">
+        <button id="bprev" title="上一步">◀</button>
+        <button id="breplay" title="重播动画">↻ 重播</button>
+        <button id="bnext" title="下一步">▶</button>
+        <button id="bflip" title="翻面">⇋ 翻面</button>
+        <button id="ball" title="看全板">全板</button>
+      </div>
+    </div>
+    <div class="svgwrap" style="position:relative">
+      <svg id="pcb" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="readout" id="readout"><div><div class="mode" id="rmode">蜂鸣档</div><div id="rwhere"></div></div><div class="lcd" id="rlcd">—</div></div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#d4a94e"></i>焊盘</span>
+      <span><i style="background:#e9edf1"></i>已焊</span>
+      <span><i style="background:#ffe08a"></i>当前焊点</span>
+      <span><i style="border:2px dashed #57e3b0"></i>当前元件</span>
+      <span><i style="border:2px dashed #ff6b6b"></i>不焊</span>
+      <span>悬停/点按焊盘看网络名</span>
+    </div>
+  </section>
+  <aside id="steps"></aside>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const BOARDS = /*__DATA__*/;
+
+/* ---------------- 步骤定义 ----------------
+ seq: 焊接顺序 "位号.焊盘"，第一个是先上锡/固定的那个
+ place: 是否演示“放元件”；solderSide: 焊接时看哪一面
+ co: 标注 [key, 文字, 类型]；probe: [红表笔, 黑表笔]；lcd/mode: 万用表读数
+------------------------------------------- */
+const STEPS = {
+eye: [
+ {g:'原理', t:'先看懂供电路径', parts:['U1','D2','C12','J1','J2','J3','H1'], view:'top',
+  nets:{'VIN':'#ffd43b','V+':'#ff6b6b','5V':'#ff9f43'},
+  co:[['U1.2','VIN 输入（XH 座）','plus'],['D2.2','SS34：VIN → V+'],['J2.3','V+ → 舵机电源'],['C12.1','C12 短接：VIN → 5V'],['H1.2','Pico VSYS（直连 5V）','warn']],
+  html:`<p>黄色 = <b>VIN</b>（XH 座输入），红色 = <b>V+</b>（经 SS34 后给舵机），橙色 = <b>5V</b>（经 C12 短接后给 Pico VSYS）。GND 走敷铜，没有画出来。</p>
+  <div class="warn">舵机和 Pico 都直接接在电源上，中间没有稳压：<b>电源只能接 5.0 到 5.1V</b>，超过 5.5V 会烧 Pico。板上的 "12V Select" 不要用。</div>
+  <p>同一种板做 <b>2 块</b>：一块给眼睛，一块给眉毛。每个元件两块板连着焊，效率更高。</p>`},
+ {g:'焊接 · 贴片', t:'C12 焊锡短接（5V Select）', parts:['C12'], view:'top', seq:['C12.1','C12.2'], bridge:'C12', skip:['C11'],
+  co:[['C12.1','两个焊盘拖锡连成一片','plus'],['C11.1','C11（12V Select）不焊','warn']],
+  html:`<p>两个焊盘各上一点锡，再用烙铁把它们拖成一片；也可以焊一个 0805 0Ω 电阻。</p>
+  <div class="warn">旁边的 <b>C11 不要碰</b>。C12 不短接的话，拔掉 USB 后 Pico 就没电了。</div>`},
+ {g:'焊接 · 贴片', t:'D2 肖特基二极管 SS34', parts:['D2'], view:'top', place:true, seq:['D2.2','D2.1'],
+  co:[['D2.1','色环（负极）在这一端 → V+','warn'],['D2.2','先在这个焊盘上锡']],
+  chips:[['D2','SS34 · SMA · C8678']],
+  html:`<p>先在一个焊盘上点锡，用镊子夹着二极管把它焊住；<b>确认色环朝 V+ 那一端（靠近舵机排针，图里朝下）</b>后，再焊另一端。</p>`},
+ {g:'焊接 · 贴片', t:'C14 钽电容 100nF', parts:['C14'], view:'top', place:true, seq:['C14.2','C14.1'],
+  co:[['C14.1','色条 = 正极 → 5V','warn']],
+  chips:[['C14','TAJA104K035 · A 型 3216 · C7173']],
+  html:`<div class="warn">钽电容<b>有色条的一端是正极</b>，和电解电容的标法正好相反。</div><p>焊法和 D2 一样：先固定一端，确认方向后再焊另一端。</p>`},
+ {g:'焊接 · 贴片', t:'C10 电解电容 220µF 16V', parts:['C10'], view:'top', place:true, seq:['C10.1','C10.2'],
+  co:[['C10.1','＋ 正极（底座切角）→ V+','plus'],['C10.2','罐顶黑色半月 = 负极 → GND','warn']],
+  chips:[['C10','220µF 16V · 6.3 mm · C2887273']],
+  html:`<p>两个焊盘先上锡，把电容放上去后加热焊盘，让锡流到电容引脚上。</p><p>极性看两个地方：罐顶的<b>黑色半月是负极</b>，底座<b>切角的那一侧是正极</b>，和丝印上的切角、"+" 号对齐。</p>`},
+ {g:'焊接 · 贴片', t:'电源指示灯 5VLED + R1', opt:true, parts:['5VLED','R1'], view:'top', place:true, seq:['R1.1','R1.2','5VLED.1','5VLED.2'], skip:['12VLED','R2'],
+  co:[['5VLED.1','LED 负极 → GND'],['12VLED.1','12VLED/R2 不焊','warn']],
+  html:`<p>可以不焊，只是一个电源指示灯。想要的话，就焊 5VLED 和 R1（91Ω）。LED 的负极用万用表二极管档确认：红笔接正极时 LED 会微亮。</p>`},
+ {g:'焊接 · 插件', t:'SW1 拨动开关', parts:['SW1'], view:'top', place:true, solderSide:'bottom', seq:['SW1.2','SW1.1','SW1.3','SW1.4','SW1.5'],
+  co:[['SW1.1','GP1'],['SW1.2','公共端 = GND'],['SW1.4','固定脚也要焊']],
+  html:`<p>从正面插进去，<b>翻到背面焊</b>。先焊中间一个脚，确认开关贴平后再焊其余的脚，两个固定脚也焊上。</p>
+  <p>眼睛板必须焊（固件用 GP1 判断是否进入校准）；眉毛板的固件不读这个开关，焊不焊都可以。</p>`},
+ {g:'焊接 · 插件', t:'J1 J2 J3 舵机排针（2x3）', parts:['J1','J2','J3'], view:'top', place:true, solderSide:'bottom',
+  seq:['J1.1','J1.6','J1.2','J1.3','J1.4','J1.5','J2.1','J2.6','J2.2','J2.3','J2.4','J2.5','J3.1','J3.6','J3.2','J3.3','J3.4','J3.5'],
+  co:[['J1.1','S 信号'],['J1.3','＋ V+'],['J1.5','− GND']],
+  html:`<p>三个排针一起插好，用胶带固定，翻到背面<b>先焊对角两针</b>，确认排针垂直后再焊满。</p>
+  <p>每一<b>竖列</b>接一个舵机，从上到下依次是 <b>S（信号）、＋、−</b>（板上丝印也是这样印的）。</p>`},
+ {g:'焊接 · 插件', t:'U1 XH 电源座：装在背面！', parts:['U1'], view:'bottom', place:true, solderSide:'top', seq:['U1.1','U1.2'],
+  co:[['U1.2','VIN（+5V）'],['U1.1','GND']],
+  html:`<div class="warn">这个元件在 <b>Bottom 层</b>：座子<b>从背面插进去</b>，翻到正面焊。插之前看清楚，别装到正面。</div>
+  <p>开口朝向板子的上边缘，这样电源线可以从板边插进来。</p>`},
+ {g:'焊接 · 插件', t:'H1 H2 Pico 排母（1x20）', parts:['H1','H2'], view:'top', place:true, solderSide:'bottom', pico:true,
+  seq:['H1.1','H1.20','H2.1','H2.20','H1.2','H1.3','H1.5','H1.19','H1.20','H2.4','H2.5','H2.6','H2.7','H2.9','H2.10','H2.13','H2.19'],
+  skip:['H3','CN1','CN2'],
+  co:[['H1.1','USB 端（第 1 脚）','plus'],['H1.2','VSYS'],['H3.1','H3 / CN1 / CN2 不焊','warn']],
+  html:`<p>先把 <b>Pico H 插进两条排母</b>，再把整体插到板子上，用 Pico 当定位夹具。每条排母<b>先焊两头两针</b>，确认两条平行后再焊满（20 针都要焊）。焊的时候 Pico 不通电，也不要插 USB。</p>
+  <p>H3、CN1、CN2 是原版两块板互联用的，我们的方案不用。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'目检', parts:['D2','C14','C10','C12','H1','H2'], view:'top',
+  html:`<p>逐个核对二极管、钽电容、电解电容的方向，以及 C12 是否短接好。用放大镜看排母相邻的针之间有没有锡桥。用酒精把助焊剂洗干净，晾干。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'VIN 和 GND 之间不能短路', parts:['U1'], view:'top', probe:['U1.2','U1.1'], mode:'蜂鸣档 / 电阻档', lcd:'不响 · OL↗',
+  html:`<p>红表笔接 XH 座的 VIN 脚，黑表笔接 GND 脚。<b>不应该响</b>。电阻读数从小慢慢变大是正常的，那是电容在充电。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'V+ 和 GND 之间不能短路', parts:['J1'], view:'top', probe:['J1.3','J1.5'], mode:'蜂鸣档', lcd:'不响',
+  html:`<p>量排针的 ＋ 行和 − 行，<b>不应该响</b>。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'C12 短接通了', parts:['U1','H1'], view:'top', probe:['U1.2','H1.2'], mode:'蜂鸣档', lcd:'响 · ≈0 Ω',
+  html:`<p>量 VIN 和 Pico 插座的 VSYS 位（H1 第 2 脚，USB 端数起第 2 个）。<b>应该响</b>，说明 C12 短接成功。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'D2 方向正确', parts:['D2'], view:'top', probe:['D2.2','D2.1'], mode:'二极管档', lcd:'0.15–0.35 V',
+  html:`<p>红表笔接 VIN 一侧，黑表笔接 V+ 一侧，读数约 0.15 到 0.35V。两支表笔反过来量应该显示 OL。</p>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'输入电压', parts:['U1'], view:'top', probe:['U1.2','U1.1'], mode:'直流电压档', lcd:'5.0 V',
+  html:`<p>有可调电源的话，设成 5.0V、限流 0.3A。没有的话，第一次只碰一下电源就断开，摸一摸有没有元件发烫。</p>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'舵机电源 V+', parts:['J1'], view:'top', probe:['J1.3','J1.5'], mode:'直流电压档', lcd:'4.7–4.9 V',
+  html:`<p>比输入低 0.1 到 0.3V，扣掉的是 SS34 的压降。</p>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'Pico 插座 VSYS', parts:['H1'], view:'top', probe:['H1.2','H1.3'], mode:'直流电压档', lcd:'≈5.0 V',
+  html:`<p>H1 的第 2 脚是 VSYS，第 3 脚是 GND。</p>`},
+ {g:'插 Pico 联调', t:'插 Pico：USB 朝上', parts:['H1','H2'], view:'top', pico:true,
+  co:[['H1.1','USB 端','plus']],
+  html:`<ol style="padding-left:18px;margin:6px 0">
+  <li>先只插 USB（不接 5V 电源），刷 MicroPython 和固件：<code>firmware/flash.sh eyes</code>（眉毛板用 <code>brows</code>）。</li>
+  <li>断开 USB，把 Pico 插到板子上，<b>USB 口朝 H1 第 1 脚那一端</b>。</li>
+  <li>接 5V 电源，再插 USB，用 <code>mpremote connect auto repl</code> 能连上就说明供电和通信都正常。</li></ol>`},
+ {g:'插 Pico 联调', t:'舵机通道和拨动开关', parts:['J1','J2','J3','SW1'], view:'top',
+  labels:[['J1.1','GP8 · 眼 LR / 眉 LO'],['J1.2','GP9 · 眼 UD / 眉 LI'],['J2.1','GP13 · 眼 TL / 眉 RI'],['J2.2','GP12 · 眼 BL / 眉 RO'],['J3.1','GP11 · 眼 TR'],['J3.2','GP10 · 眼 BR']],
+  co:[['SW1.2','眼睛板：GP1 接地 = 正常运行','warn']],
+  html:`<table><tr><th>排针</th><th>眼睛板</th><th>眉毛板</th></tr>
+  <tr><td>J1 左列 / 右列</td><td>GP8 LR 眼球左右 / GP9 UD 眼球上下</td><td>GP8 LO / GP9 LI</td></tr>
+  <tr><td>J2 左列 / 右列</td><td>GP13 TL / GP12 BL</td><td>GP13 RI / GP12 RO</td></tr>
+  <tr><td>J3 左列 / 右列</td><td>GP11 TR / GP10 BR</td><td>没用到</td></tr></table>
+  <p>舵机插头的<b>棕色或黑色线对着 − 行</b>，红线在中间，橙色或黄色线对着 S 行。<b>一次只接一个舵机</b>，发 <code>C</code> 后它应该转到 90° 并停住。</p>
+  <div class="warn">眼睛板 SW1：GP1 <b>接地才是正常运行</b>，不接地就是校准模式。开关拨到哪一边算接地，用万用表量第 1 脚和第 2 脚是否导通来确认，然后在板子上做个标记。</div>`},
+],
+mouth: [
+ {g:'原理', t:'先看懂供电路径', parts:['U1','D1','D2','U2','BOARD POWER','U3','U10'], view:'top',
+  nets:{'5V':'#ffd43b','V+':'#ff6b6b','$1N4017':'#ff9f43','$1N8629':'#4dabf7','5VREG':'#b197fc'},
+  co:[['U1.3','XT60 5V 输入','plus'],['D1.2','D1：5V → V+（舵机）'],['D2.2','D2：5V → AMS1117'],['U2.4','AMS1117 输出 ≈3.5–4V','warn'],['BOARD POWER.1','跳线帽 → Pico VSYS']],
+  html:`<p>黄色 = <b>5V</b> 输入，红色 = <b>V+</b>（经 D1 后给 12 路舵机），橙色 → 蓝色 = 经 D2 进 AMS1117-5.0，再经 BOARD POWER 跳线（紫色 5VREG）到 Pico VSYS。</p>
+  <div class="note">AMS1117-5.0 的输入只有约 4.7V，达不到 5V 稳压需要的压差，所以<b>输出只有 3.5 到 4V，这是正常的</b>。Pico 的 VSYS 范围是 1.8 到 5.5V，可以用。</div>`},
+ {g:'焊接 · 贴片', t:'D1 D2 肖特基二极管 SS1045', parts:['D1','D2'], view:'top', place:true, seq:['D1.2','D1.1','D2.2','D2.1'],
+  co:[['D1.1','D1 色环 → V+','warn'],['D2.1','D2 色环 → AMS1117','warn']],
+  chips:[['D1 D2','SS1045 · SMB · C2903947']],
+  html:`<p>先在一个焊盘上点锡，用镊子夹着二极管把它焊住，确认色环方向后再焊另一端。两个二极管的色环都朝<b>远离 5V 输入</b>的那一端（图里 D1 朝下，D2 朝下）。</p>`},
+ {g:'焊接 · 贴片', t:'U2 AMS1117-5.0（SOT-223）', parts:['U2'], view:'top', place:true, seq:['U2.1','U2.3','U2.2','U2.4'],
+  co:[['U2.4','大散热片：加温、加助焊膏','warn'],['U2.1','先焊一只小脚固定']],
+  html:`<p>先焊一只小脚把芯片固定住，再焊另外两只小脚，最后焊大散热片。散热片吸热大，烙铁调到 380°C 左右，加助焊膏，焊到锡完全浸润才行。</p>`},
+ {g:'焊接 · 贴片', t:'C2 C3 C5 C7 C8 电解电容 220µF', parts:['C2','C3','C5','C7','C8'], view:'top', place:true,
+  seq:['C2.1','C2.2','C3.1','C3.2','C5.1','C5.2','C7.1','C7.2','C8.1','C8.2'],
+  co:[['C2.1','＋','plus'],['C3.1','＋','plus'],['C5.1','＋','plus'],['C7.1','＋','plus'],['C8.1','＋ C8 方向相反！','warn']],
+  html:`<p>前四个电容的正极都朝左（V+），<b>C8 的正极朝右</b>，接 AMS1117 的输出。每焊完一个都对一下方向。</p>`},
+ {g:'焊接 · 贴片', t:'C1 电解电容 1000µF（10 mm）', parts:['C1'], view:'top', place:true, seq:['C1.1','C1.2'],
+  co:[['C1.1','＋ 正极 → V+','plus'],['C1.2','黑色半月 = 负极','warn']],
+  html:`<p>个头大，焊盘也大，烙铁可以调到 350 到 380°C。</p>`},
+ {g:'焊接 · 插件', t:'SW1 拨动开关 + BOARD POWER 排针', parts:['SW1','BOARD POWER'], view:'top', place:true, solderSide:'bottom',
+  seq:['SW1.2','SW1.1','SW1.3','SW1.4','SW1.5','BOARD POWER.1','BOARD POWER.2'],
+  co:[['SW1.1','GP28'],['BOARD POWER.1','插跳线帽才给 Pico 供电','plus']],
+  html:`<p>从正面插进去，翻到背面焊。BOARD POWER 是 2P 排针，最后要插一个跳线帽。</p>`},
+ {g:'焊接 · 插件', t:'U3–U8 舵机排针（6 个 2x3）', parts:['U3','U4','U5','U6','U7','U8'], view:'top', place:true, solderSide:'bottom',
+  seq:['U3.1','U8.6','U3.6','U8.1','U3.2','U3.3','U3.4','U3.5','U4.1','U4.2','U4.3','U4.4','U4.5','U4.6','U5.1','U5.2','U5.3','U5.4','U5.5','U5.6','U6.1','U6.2','U6.3','U6.4','U6.5','U6.6','U7.1','U7.2','U7.3','U7.4','U7.5','U7.6','U8.2','U8.3','U8.4','U8.5'],
+  co:[['U3.1','S'],['U3.3','＋'],['U3.5','−']],
+  html:`<p>6 个排针一起插好，用胶带固定成一排，翻到背面<b>先焊两端的对角针</b>，确认整排对齐后再焊满。</p>`},
+ {g:'焊接 · 插件', t:'U1 XT60 电源座', parts:['U1'], view:'top', place:true, solderSide:'bottom', seq:['U1.3','U1.4','U1.1','U1.2'],
+  co:[['U1.3','＋ 5V','plus'],['U1.4','− GND'],['U1.1','固定脚']],
+  html:`<p>这是吸热最大的焊点：烙铁调到 380 到 400°C，换大号烙铁头，<b>每个焊盘多给锡，让焊锡把焊盘和焊杯填满</b>。焊完等它自然冷却，<b>不要碰座子的塑料</b>，它受热会变软。</p>
+  <p>两个大焊盘是电源，两个小方脚是固定脚。座子上印着 +/−，和丝印对齐。</p>`},
+ {g:'焊接 · 插件', t:'U9 U10 Pico 双排排母（2x20）', parts:['U9','U10'], view:'top', place:true, solderSide:'bottom', pico:true, inner:true,
+  seq:['U9.1','U9.40','U10.1','U10.40','U9.2','U10.2','U9.39','U10.39'],
+  skip:['H1','CN1','CN2','LED1','R1'],
+  co:[['U9.2','Pico 插里侧这两排','plus'],['U10.3','VSYS'],['H1.1','H1 / CN / LED1 / R1 不焊','warn']],
+  html:`<div class="warn">Pico 插在<b>里侧两排</b>（两排相距 17.78 mm）。外侧两排和里侧是并联的，只是方便飞线。</div>
+  <p>用 Pico H 当定位夹具，先焊四个角，确认平行后焊满 80 个脚。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'目检', parts:['D1','D2','U2','C1','C2','C3','C5','C7','C8'], view:'top',
+  html:`<p>逐个核对二极管和电解电容的方向，看 SOT-223 的引脚之间、排母相邻的针之间有没有锡桥。用酒精把助焊剂洗干净。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'XT60 正负不能短路', parts:['U1'], view:'top', probe:['U1.3','U1.4'], mode:'蜂鸣档', lcd:'不响 · OL↗', html:`<p>不应该响。读数慢慢升高是电容在充电。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'V+ 和 GND 之间不能短路', parts:['U3'], view:'top', probe:['U3.3','U3.5'], mode:'蜂鸣档', lcd:'不响', html:`<p>量任意一个排针的 ＋ 行和 − 行。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'Pico VSYS 和 GND 之间不能短路', parts:['U10'], view:'top', probe:['U10.3','U10.5'], mode:'蜂鸣档', lcd:'不响', html:`<p>U10 从 USB 端数起第 2 个位置是 VSYS，第 3 个是 GND。</p>`},
+ {g:'上电前检查（不插 Pico、不接舵机）', t:'D1 D2 方向正确', parts:['D1','D2'], view:'top', probe:['D1.2','D1.1'], probe2:['D2.2','D2.1'], mode:'二极管档', lcd:'0.15–0.35 V', html:`<p>红表笔接 5V 一侧，黑表笔接另一侧，两个二极管都应该读到 0.15 到 0.35V。两支表笔反过来量应该显示 OL。</p>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'舵机电源 V+', parts:['U3'], view:'top', probe:['U3.3','U3.5'], mode:'直流电压档', lcd:'4.7–4.9 V', html:`<p>有可调电源的话，设成 5.0V、限流 0.3A。</p>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'AMS1117 输出', parts:['BOARD POWER','U10'], view:'top', probe:['BOARD POWER.1','U10.5'], mode:'直流电压档', lcd:'3.5–4 V', html:`<div class="note"><b>不是 5V 是正常的</b>，原因见第一步。不要去改电路。</div>`},
+ {g:'第一次上电（5V，还是不插 Pico）', t:'插跳线帽后量 VSYS', parts:['U10','BOARD POWER'], view:'top', probe:['U10.3','U10.5'], mode:'直流电压档', lcd:'3.5–4 V', html:`<p>插上 BOARD POWER 跳线帽后，U10 的 VSYS 位应该和上一步的读数一样。</p>`},
+ {g:'插 Pico 联调', t:'插 Pico：里侧两排，USB 朝上', parts:['U9','U10'], view:'top', pico:true, inner:true,
+  co:[['U10.1','USB 端','plus']],
+  html:`<ol style="padding-left:18px;margin:6px 0"><li>先只插 USB，刷固件：<code>firmware/flash.sh mouth</code>。</li><li>断开 USB，把 Pico 插到<b>里侧两排</b>，USB 朝上。</li><li>插上跳线帽，接 5V 电源，再插 USB，用 <code>mpremote</code> 连接测试。</li></ol>`},
+ {g:'插 Pico 联调', t:'舵机通道和拨动开关', parts:['U3','U4','U5','U6','U7','U8','SW1'], view:'top',
+  labels:[['U3.1','GP4 JL'],['U3.2','GP5 JR'],['U4.1','GP6 LUL'],['U4.2','GP7 LUR'],['U5.1','GP8 LLL'],['U5.2','GP9 LLR'],['U6.1','GP10 CUL'],['U6.2','GP11 CUR'],['U7.1','GP12 CLL'],['U7.2','GP13 CLR'],['U8.1','GP14 TON'],['U8.2','GP15 EXA']],
+  co:[['SW1.2','GP28 接地 = 全部回 90°（装舵盘用）','warn']],
+  html:`<table><tr><th>排针</th><th>左列</th><th>右列</th></tr>
+  <tr><td>U3</td><td>GP4 JL 下颌左（MG996R）</td><td>GP5 JR 下颌右（MG996R）</td></tr>
+  <tr><td>U4</td><td>GP6 LUL 上唇左</td><td>GP7 LUR 上唇右</td></tr>
+  <tr><td>U5</td><td>GP8 LLL 下唇左</td><td>GP9 LLR 下唇右</td></tr>
+  <tr><td>U6</td><td>GP10 CUL 左嘴角上</td><td>GP11 CUR 右嘴角上</td></tr>
+  <tr><td>U7</td><td>GP12 CLL 左嘴角下</td><td>GP13 CLR 右嘴角下</td></tr>
+  <tr><td>U8</td><td>GP14 TON 舌头</td><td>GP15 EXA 备用</td></tr></table>
+  <p>丝印上也印着这些名字。<b>棕色线对着 − 行</b>。下颌两个 MG996R 的起动电流大，XT60 线要用 16 到 18 AWG。</p>
+  <div class="warn">嘴部板 SW1 的含义和眼睛板<b>相反</b>：GP28 接地时全部舵机回到 90°，装舵盘时用；正常运行时拨到另一边。</div>`},
+]};
+
+/* ---------------- 渲染 ---------------- */
+const svg = document.getElementById('pcb');
+const NS = 'http://www.w3.org/2000/svg';
+let B = 'eye', IDX = 0, SIDE = 'top', TOKEN = 0, CAM = null;
+const PADS = {};   // key "REF.num" -> pad data
+
+function tp(x, y, side){ return side === 'top' ? [x, -y] : [-x, -y]; }
+function dpath(pts, side, closed){
+  return 'M' + pts.map(p => tp(p[0], p[1], side).map(v => +v.toFixed(1)).join(',')).join('L') + (closed ? 'Z' : '');
+}
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function bodyColor(ref, part){
+  part = (part || '') + '';
+  if (/^C\d/.test(ref) && /RVT/.test(part)) return '#c7ccd3';
+  if (/^C\d/.test(ref)) return '#c9a227';
+  if (/XT60/.test(part)) return '#e5c13a';
+  if (/LED/.test(ref)) return '#9ad0ff';
+  if (/^SW/.test(ref)) return '#5b636b';
+  return '#202326';
+}
+function boardBox(side){
+  const r = BOARDS[B].outline.find(o => !o.circle);
+  const pts = r.pts.map(p => tp(p[0], p[1], side));
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+function build(){
+  svg.innerHTML = '';
+  for (const k in PADS) delete PADS[k];
+  const data = BOARDS[B];
+  data.comps.forEach(c => c.pads.forEach(p => PADS[c.ref + '.' + p.num] = Object.assign({ref: c.ref, comp: c}, p)));
+  for (const side of ['top', 'bottom']){
+    const g = el('g', {id: 'side-' + side, style: side === SIDE ? '' : 'display:none'}, svg);
+    // 板子
+    let d = '';
+    data.outline.forEach(o => {
+      if (o.circle){ const [, cx, cy, r] = o.circle; const [x, y] = tp(cx, cy, side);
+        d += `M${x + r},${y}A${r},${r} 0 1 0 ${x - r},${y}A${r},${r} 0 1 0 ${x + r},${y}Z`; }
+      else d += dpath(o.pts, side, true);
+    });
+    el('path', {d, class: 'boardfill', 'fill-rule': 'evenodd'}, g);
+    // 走线
+    const tg = el('g', {class: 'tracks'}, g);
+    const cl = side === 'top' ? 1 : 2;
+    data.tracks.filter(t => t.layer === cl).forEach(t => {
+      const [x1, y1] = tp(t.p[0], t.p[1], side), [x2, y2] = tp(t.p[2], t.p[3], side);
+      el('line', {x1, y1, x2, y2, 'stroke-width': t.w, class: 'trk', 'data-net': t.net}, tg);
+    });
+    // 板面丝印
+    const sl = side === 'top' ? 3 : 4;
+    const sg = el('g', {}, g);
+    data.silk.filter(s => s.layer === sl).forEach(s => el('path', {d: dpath(s.pts, side, s.closed), class: 'silk', 'stroke-width': s.w}, sg));
+    data.text.filter(t => t.layer === sl).forEach(t => {
+      const [x, y] = tp(t.x, t.y, side);
+      const lines = (t.text || '').split('\n').filter(Boolean);
+      const rot = side === 'top' ? -t.rot : t.rot;
+      const tx = el('text', {x, y, class: 'stext', 'font-size': t.size, transform: `rotate(${rot % 360} ${x} ${y})`}, sg);
+      lines.forEach((ln, i) => { const ts = el('tspan', {x, dy: i ? t.size * 1.05 : 0}, tx); ts.textContent = ln; });
+    });
+    // 元件
+    const cg = el('g', {}, g);
+    data.comps.forEach(c => {
+      const own = (side === 'top') === (c.layer === 1);
+      const gc = el('g', {class: 'comp', 'data-ref': c.ref}, cg);
+      // 元件丝印（只画在对应面）
+      c.silk.filter(s => s.layer === sl).forEach(s => {
+        if (s.fill) el('path', {d: dpath(s.pts, side, true), class: 'silkf'}, gc);
+        else el('path', {d: dpath(s.pts, side, s.closed), class: 'silk', 'stroke-width': s.w}, gc);
+      });
+      // 焊盘：贴片只在本面，插件两面都有
+      c.pads.forEach(p => {
+        const vis = p.th || p.layer === 12 || (side === 'top' ? p.layer === 1 : p.layer === 2);
+        if (!vis) return;
+        el('path', {d: dpath(p.pts, side, true), class: 'pad', 'data-key': c.ref + '.' + p.num, 'data-net': p.net}, gc);
+        if (p.hole){
+          const [x, y] = tp(p.x, p.y, side);
+          if (p.hole.kind === 'SLOT'){
+            const horiz = (Math.max(...p.pts.map(q => q[0])) - Math.min(...p.pts.map(q => q[0]))) >= (Math.max(...p.pts.map(q => q[1])) - Math.min(...p.pts.map(q => q[1])));
+            const a = Math.max(p.hole.w, p.hole.h), b = Math.min(p.hole.w, p.hole.h);
+            el('rect', {x: x - (horiz ? a : b) / 2, y: y - (horiz ? b : a) / 2, width: horiz ? a : b, height: horiz ? b : a, rx: b / 2, class: 'hole'}, gc);
+          } else el('circle', {cx: x, cy: y, r: p.hole.w / 2, class: 'hole'}, gc);
+        }
+      });
+      // 位号
+      if (c.label && c.label.show && own){
+        const [x, y] = tp(c.label.x, c.label.y, side);
+        const rot = side === 'top' ? -c.label.rot : c.label.rot;
+        const t = el('text', {x, y, class: 'stext', 'font-size': c.label.size, transform: `rotate(${rot % 360} ${x} ${y})`}, gc);
+        t.textContent = c.ref;
+      }
+      // 元件本体
+      if (own){
+        const bg = el('g', {class: 'bodyg', style: `--bc:${bodyColor(c.ref, c.part)}`}, gc);
+        c.body.forEach(b => el('path', {d: dpath(b.pts, side, true), class: 'bodyshape'}, bg));
+        c.marks.forEach(m => el('path', {d: dpath(m.pts, side, true), class: 'bodymark'}, bg));
+      }
+    });
+    el('g', {id: 'ovl-' + side}, g);
+  }
+  // 烙铁
+  const iron = el('g', {id: 'iron'}, svg);
+  el('path', {d: 'M0,0 L-14,-40 L-26,-200 L26,-200 L14,-40 Z', fill: '#b7bec6', stroke: '#596169', 'stroke-width': 4}, iron);
+  el('rect', {x: -36, y: -420, width: 72, height: 225, rx: 18, fill: '#2b6cb0', stroke: '#173d63', 'stroke-width': 4}, iron);
+  el('circle', {cx: 0, cy: -2, r: 7, fill: '#ff9f43'}, iron);
+  setCam(boardBox(SIDE), 0);
+}
+
+/* ---------- 相机 ---------- */
+function setCam(box, dur = 650){
+  const pad = 0.12;
+  let [x0, y0, x1, y1] = box;
+  let w = x1 - x0, h = y1 - y0;
+  const r = svg.clientWidth / Math.max(svg.clientHeight, 1) || 1.3;
+  x0 -= w * pad; x1 += w * pad; y0 -= h * pad; y1 += h * pad; w = x1 - x0; h = y1 - y0;
+  if (w / h < r){ const nw = h * r; x0 -= (nw - w) / 2; w = nw; } else { const nh = w / r; y0 -= (nh - h) / 2; h = nh; }
+  const to = [x0, y0, w, h];
+  const from = CAM || to;
+  const t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!dur || reduce || FF){ CAM = to; CAM_TARGET = to; svg.setAttribute('viewBox', to.join(' ')); return; }
+  const tok = ++camTok;
+  (function step(now){
+    if (tok !== camTok) return;
+    let k = Math.min(1, (now - t0) / dur); k = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    CAM = from.map((v, i) => v + (to[i] - v) * k);
+    svg.setAttribute('viewBox', CAM.join(' '));
+    if (k < 1) requestAnimationFrame(step);
+  })(t0);
+  CAM_TARGET = to;
+}
+let camTok = 0, CAM_TARGET = null;
+function compBox(refs, side){
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  refs.forEach(r => { const c = BOARDS[B].comps.find(c => c.ref === r); if (!c) return;
+    const a = tp(c.bbox[0], c.bbox[1], side), b = tp(c.bbox[2], c.bbox[3], side);
+    x0 = Math.min(x0, a[0], b[0]); x1 = Math.max(x1, a[0], b[0]); y0 = Math.min(y0, a[1], b[1]); y1 = Math.max(y1, a[1], b[1]); });
+  return [x0, y0, x1, y1];
+}
+
+/* ---------- 翻面 ---------- */
+function setSide(side, animate = true){
+  return new Promise(res => {
+    if (side === SIDE){ res(); return; }
+    const swap = () => {
+      SIDE = side;
+      document.getElementById('side-top').style.display = side === 'top' ? '' : 'none';
+      document.getElementById('side-bottom').style.display = side === 'bottom' ? '' : 'none';
+      const b = document.getElementById('sidebadge');
+      b.textContent = side === 'top' ? '正面（Top）' : '背面（Bottom）· 镜像视角';
+      b.classList.toggle('bottom', side === 'bottom');
+      if (CAM){ CAM = [-(CAM[0] + CAM[2]), CAM[1], CAM[2], CAM[3]]; svg.setAttribute('viewBox', CAM.join(' ')); }
+    };
+    if (!animate || FF || matchMedia('(prefers-reduced-motion: reduce)').matches){ swap(); res(); return; }
+    svg.classList.add('flip');
+    setTimeout(() => { swap(); svg.classList.remove('flip'); setTimeout(res, 300); }, 290);
+  });
+}
+
+/* ---------- 叠加层 ---------- */
+function ovl(){ return document.getElementById('ovl-' + SIDE); }
+function clearOvl(){ ['top', 'bottom'].forEach(s => { const o = document.getElementById('ovl-' + s); if (o) o.innerHTML = ''; }); }
+function fs(){ const c = CAM_TARGET || CAM; return Math.max(22, Math.min(c[2], c[3] * 1.4) / 34); }
+function padXY(key){ const p = PADS[key]; if (!p) return null; return tp(p.x, p.y, SIDE); }
+function callouts(list){
+  // 左右两栏排布，按焊盘 y 排序，保证不重叠
+  const c = CAM_TARGET || CAM, f = fs();
+  const cx = c[0] + c[2] / 2;
+  const items = list.map(([key, text, kind]) => ({key, text, kind, xy: padXY(key)})).filter(o => o.xy);
+  for (const left of [true, false]){
+    const col = items.filter(o => (o.xy[0] < cx) === left).sort((a, b) => a.xy[1] - b.xy[1]);
+    const gap = f * 1.7, top = c[1] + f * 1.3, bot = c[1] + c[3] - f * 0.6;
+    let y = top;
+    col.forEach(o => { o.ly = Math.max(y, Math.min(o.xy[1], bot)); y = o.ly + gap; });
+    // 超出底部就整体上移
+    let over = col.length ? col[col.length - 1].ly - bot : 0;
+    for (let i = col.length - 1; i >= 0 && over > 0; i--){
+      col[i].ly -= over;
+      if (i > 0 && col[i].ly - col[i - 1].ly < gap){ over = col[i - 1].ly - (col[i].ly - gap); } else over = 0;
+    }
+    col.forEach(o => drawCallout(o, left, f, c));
+  }
+}
+function drawCallout(o, left, f, c){
+  const {xy, text, kind, ly} = o;
+  const g = el('g', {class: 'co ' + (kind || '')}, ovl());
+  const t = el('text', {class: 'co-text', 'font-size': f, x: 0, y: 0}, g); t.textContent = text;
+  let tw = text.length * f;
+  try { tw = t.getComputedTextLength() || tw; } catch(e){}
+  const lx = left ? c[0] + f * 0.5 : c[0] + c[2] - f * 0.5;
+  const bx = left ? lx : lx - tw - f * 0.9;
+  const by = ly - f * 0.95;
+  const midx = left ? bx + tw + f * 0.9 : bx;
+  const line = el('path', {class: 'co-line', d: `M${xy[0]},${xy[1]} L${midx},${ly - f * 0.28}`, 'stroke-width': f * 0.08}, g);
+  g.insertBefore(line, t);
+  const dot = el('circle', {class: 'co-dot', cx: xy[0], cy: xy[1], r: f * 0.2}, g);
+  const box = el('rect', {class: 'co-box', x: bx, y: by, width: tw + f * 0.9, height: f * 1.35, rx: f * 0.35, 'stroke-width': f * 0.06}, g);
+  g.insertBefore(box, t);
+  t.setAttribute('x', bx + f * 0.45); t.setAttribute('y', ly);
+  if (!FF){ g.style.opacity = 0; g.style.transition = 'opacity .35s'; requestAnimationFrame(() => g.style.opacity = 1); }
+}
+function label(key, text){
+  const xy = padXY(key); if (!xy) return;
+  const f = fs() * 0.62;
+  const g = el('g', {}, ovl());
+  const t = el('text', {class: 'co-text', 'font-size': f, x: xy[0], y: xy[1] - f * 1.2, 'text-anchor': 'middle',
+    transform: `rotate(-60 ${xy[0]} ${xy[1] - f * 1.2})`}, g);
+  t.textContent = text;
+  el('circle', {cx: xy[0], cy: xy[1], r: f * 0.35, fill: '#57e3b0'}, g);
+}
+function probeMark(key, color, txt, other){
+  const xy = padXY(key); if (!xy) return;
+  const f = fs();
+  const o = other ? padXY(other) : null;
+  let dx = 0.45, dy = -1;
+  if (o){ dx = xy[0] - o[0]; dy = xy[1] - o[1]; const n = Math.hypot(dx, dy) || 1; dx /= n; dy /= n;
+    dx = dx * 0.8 + 0.35; dy = dy * 0.8 - 0.25; const m = Math.hypot(dx, dy); dx /= m; dy /= m; }
+  const L = f * 5.2, W = f * 0.55;
+  const px = -dy, py = dx;
+  const g = el('g', {}, ovl());
+  el('circle', {cx: xy[0], cy: xy[1], r: f * 0.75, class: 'probe-ring', stroke: color === '#1a1a1a' ? '#fff' : color}, g);
+  const a = [xy[0] + dx * f * .5, xy[1] + dy * f * .5];
+  const b = [xy[0] + dx * L, xy[1] + dy * L];
+  el('path', {d: `M${xy[0]},${xy[1]} L${a[0] + px * W * .5},${a[1] + py * W * .5} L${b[0] + px * W},${b[1] + py * W} L${b[0] - px * W},${b[1] - py * W} L${a[0] - px * W * .5},${a[1] - py * W * .5}Z`,
+    fill: color, stroke: '#fff', 'stroke-width': f * 0.07, opacity: .95}, g);
+  const t = el('text', {class: 'co-text', 'font-size': f * 0.8, x: b[0] + dx * f * 0.4, y: b[1] + dy * f * 0.4 + f * 0.3,
+    'text-anchor': dx < -0.2 ? 'end' : dx > 0.2 ? 'start' : 'middle'}, g); t.textContent = txt;
+  if (!FF) g.animate?.([{opacity: 0}, {opacity: 1}], {duration: 450, easing: 'ease-out'});
+}
+function skipMark(ref){
+  const c = BOARDS[B].comps.find(c => c.ref === ref); if (!c) return;
+  const a = tp(c.bbox[0], c.bbox[1], SIDE), b = tp(c.bbox[2], c.bbox[3], SIDE);
+  const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]), w = Math.abs(a[0] - b[0]), h = Math.abs(a[1] - b[1]);
+  const g = el('g', {}, ovl());
+  el('rect', {x, y, width: w, height: h, rx: 10, class: 'skipx'}, g);
+  el('path', {d: `M${x},${y}L${x + w},${y + h}M${x + w},${y}L${x},${y + h}`, class: 'skipx', fill: 'none'}, g);
+}
+function hlMark(ref){
+  const c = BOARDS[B].comps.find(c => c.ref === ref); if (!c) return;
+  const a = tp(c.bbox[0], c.bbox[1], SIDE), b = tp(c.bbox[2], c.bbox[3], SIDE);
+  const m = 14;
+  el('rect', {x: Math.min(a[0], b[0]) - m, y: Math.min(a[1], b[1]) - m, width: Math.abs(a[0] - b[0]) + 2 * m, height: Math.abs(a[1] - b[1]) + 2 * m, rx: 16, class: 'hl'}, ovl());
+}
+function picoMark(step){
+  const refs = B === 'eye' ? ['H1', 'H2'] : ['U9', 'U10'];
+  let ps = [];
+  refs.forEach(r => BOARDS[B].comps.find(c => c.ref === r).pads.forEach(p => ps.push(p)));
+  let xs = ps.map(p => p.x), ys = ps.map(p => p.y);
+  let cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const W = 827, L = 2008; // 21 x 51 mm
+  const top = Math.max(...ys) > cy; // USB 端 = y 大的一端（两块板都是）
+  const [x0, y0] = tp(cx - W / 2, cy + L / 2, SIDE), [x1, y1] = tp(cx + W / 2, cy - L / 2, SIDE);
+  const g = el('g', {}, ovl());
+  const rx = Math.min(x0, x1), ry = Math.min(y0, y1);
+  el('rect', {x: rx, y: ry, width: Math.abs(x1 - x0), height: Math.abs(y1 - y0), rx: 40, class: 'pico'}, g);
+  el('rect', {x: rx + Math.abs(x1 - x0) / 2 - 160, y: ry - 55, width: 320, height: 130, rx: 16, class: 'pico-usb'}, g);
+  const t = el('text', {class: 'pico-t', 'font-size': 70, x: rx + Math.abs(x1 - x0) / 2, y: ry + 200, 'text-anchor': 'middle'}, g); t.textContent = 'USB ↑';
+  const t2 = el('text', {class: 'pico-t', 'font-size': 60, x: rx + Math.abs(x1 - x0) / 2, y: ry + Math.abs(y1 - y0) / 2, 'text-anchor': 'middle'}, g); t2.textContent = 'Raspberry Pi Pico';
+  if (step.inner){
+    // 外侧两排变暗
+    ['U9', 'U10'].forEach(r => {
+      const c = BOARDS[B].comps.find(c => c.ref === r);
+      c.pads.forEach(p => { const inner = r === 'U9' ? p.x > c.x : p.x < c.x;
+        svg.querySelectorAll(`[data-key="${r}.${p.num}"]`).forEach(e => e.style.opacity = inner ? 1 : .35); });
+    });
+  }
+}
+
+/* ---------- 步骤执行 ---------- */
+let FF = false;
+const sleep = ms => new Promise(r => setTimeout(r, FF ? 0 : ms));
+function steps(){ return STEPS[B]; }
+function doneSet(){ try { return new Set(JSON.parse(localStorage.getItem('solder-' + B) || '[]')); } catch(e){ return new Set(); } }
+function saveDone(s){ try { localStorage.setItem('solder-' + B, JSON.stringify([...s])); } catch(e){} }
+let DONE = new Set();
+
+function baseState(){
+  // 已完成步骤里的元件：放好 + 焊好
+  svg.querySelectorAll('.comp').forEach(g => g.classList.remove('placed', 'active', 'dim'));
+  svg.querySelectorAll('.pad').forEach(p => { p.classList.remove('soldered', 'hot', 'netglow'); p.style.opacity = ''; p.style.removeProperty('--flow'); });
+  svg.querySelectorAll('.trk').forEach(t => { t.classList.remove('flow'); t.style.removeProperty('--flow'); });
+  steps().forEach((s, i) => {
+    if (!DONE.has(i) && i >= IDX) return;
+    if (!DONE.has(i)) return;
+    (s.place ? s.parts : []).forEach(r => svg.querySelectorAll(`.comp[data-ref="${CSS.escape(r)}"]`).forEach(g => g.classList.add('placed')));
+    (s.seq || []).forEach(k => svg.querySelectorAll(`[data-key="${CSS.escape(k)}"]`).forEach(p => p.classList.add('soldered')));
+  });
+}
+
+async function run(i, opts = {}){
+  IDX = i;
+  const tok = ++TOKEN;
+  const s = steps()[i];
+  const alive = () => tok === TOKEN;
+  renderCards();
+  clearOvl();
+  document.getElementById('readout').classList.remove('show');
+  const iron = document.getElementById('iron'); iron.style.opacity = 0;
+  baseState();
+  await setSide(s.view || 'top', !opts.instant);
+  if (!alive()) return;
+  // 高亮当前元件，其余变暗
+  svg.querySelectorAll('.comp').forEach(g => {
+    const on = s.parts.includes(g.dataset.ref) || (s.skip || []).includes(g.dataset.ref);
+    g.classList.toggle('dim', !on); g.classList.toggle('active', s.parts.includes(g.dataset.ref));
+  });
+  const refsForCam = [...s.parts, ...(s.skip || []).filter(r => s.g.startsWith('焊接') && compNear(r, s.parts))];
+  let box = compBox(refsForCam, SIDE);
+  if (s.nets || s.pico) box = boardBox(SIDE);
+  if (s.probe){ const pb = compBox(s.parts, SIDE); box = pb; }
+  { const bb = boardBox(SIDE), mw = Math.min(bb[2] - bb[0], 640) , mh = Math.min(bb[3] - bb[1], 640);
+    const cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2;
+    const w = Math.max(box[2] - box[0], mw), h = Math.max(box[3] - box[1], mh);
+    box = [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]; }
+  setCam(box, opts.instant ? 0 : 650);
+  await sleep(opts.instant ? 0 : 680); if (!alive()) return;
+  s.parts.forEach(hlMark);
+  (s.skip || []).forEach(skipMark);
+  // 网络流动
+  if (s.nets){
+    for (const [net, col] of Object.entries(s.nets)){
+      svg.querySelectorAll(`.trk[data-net="${CSS.escape(net)}"]`).forEach(t => { t.classList.add('flow'); t.style.setProperty('--flow', col); });
+      svg.querySelectorAll(`.pad[data-net="${CSS.escape(net)}"]`).forEach(p => { p.classList.add('netglow'); p.style.setProperty('--flow', col); });
+      await sleep(450); if (!alive()) return;
+    }
+  }
+  if (s.pico) picoMark(s);
+  // 万用表
+  if (s.probe){
+    probeMark(s.probe[0], '#e5484d', '红表笔', s.probe[1]); probeMark(s.probe[1], '#1a1a1a', '黑表笔 COM', s.probe[0]);
+    if (s.probe2){ probeMark(s.probe2[0], '#e5484d', '红', s.probe2[1]); probeMark(s.probe2[1], '#1a1a1a', '黑', s.probe2[0]); }
+    const ro = document.getElementById('readout');
+    document.getElementById('rmode').textContent = s.mode || '';
+    document.getElementById('rwhere').textContent = `${s.probe[0]}（${PADS[s.probe[0]]?.net || ''}） ↔ ${s.probe[1]}（${PADS[s.probe[1]]?.net || ''}）`;
+    document.getElementById('rlcd').textContent = s.lcd || '';
+    ro.classList.add('show');
+  }
+  // 焊接动画
+  if (s.seq){
+    const isSMD = k => { const p = PADS[k]; return p && !p.hole; };
+    const first = s.seq[0];
+    if (s.place && isSMD(first)){
+      // 先给第一个焊盘上锡
+      await solderPad(first, tok, true); if (!alive()) return;
+    }
+    if (s.place){
+      s.parts.forEach(r => svg.querySelectorAll(`.comp[data-ref="${CSS.escape(r)}"]`).forEach(g => g.classList.add('placed')));
+      await sleep(600); if (!alive()) return;
+    }
+    if (s.solderSide && s.solderSide !== SIDE){
+      await sleep(250); await setSide(s.solderSide); if (!alive()) return;
+      clearOvl(); s.parts.forEach(hlMark); if (s.pico) picoMark(s);
+    }
+    const fast = s.seq.length > 12;
+    for (const k of s.seq){
+      await solderPad(k, tok, false, fast); if (!alive()) return;
+    }
+    if (s.bridge) bridge(s.bridge);
+    iron.style.opacity = 0;
+    if (s.solderSide && s.solderSide !== (s.view || 'top')){
+      await sleep(500); if (!alive()) return;
+      await setSide(s.view || 'top'); if (!alive()) return;
+      clearOvl(); s.parts.forEach(hlMark); (s.skip || []).forEach(skipMark); if (s.pico) picoMark(s);
+    }
+  }
+  if (!alive()) return;
+  if (FF) iron.style.opacity = 0;
+  callouts([...(s.co || []), ...(s.labels || []).map(l => [l[0], l[1], 'plus'])]);
+}
+function compNear(r, parts){ return true; }
+async function solderPad(key, tok, tinOnly, fast){
+  const xy = padXY(key); if (!xy) return;
+  const p = PADS[key];
+  const iron = document.getElementById('iron');
+  const sc = (CAM_TARGET || CAM)[2] / 2600;
+  iron.style.opacity = 1;
+  iron.style.transform = `translate(${xy[0]}px,${xy[1]}px) rotate(28deg) scale(${sc})`;
+  await sleep(fast ? 160 : 380); if (tok !== TOKEN) return;
+  svg.querySelectorAll(`[data-key="${CSS.escape(key)}"]`).forEach(e => e.classList.add('hot'));
+  const r = Math.min(...p.size) * (tinOnly ? 0.28 : 0.42);
+  const g = ovl();
+  const blob = el('circle', {cx: xy[0], cy: xy[1], r, class: 'blob'}, g);
+  el('circle', {cx: xy[0], cy: xy[1], r: r * 1.1, class: 'spark'}, g);
+  FF ? blob.classList.add('on') : requestAnimationFrame(() => blob.classList.add('on'));
+  await sleep(fast ? 180 : 420); if (tok !== TOKEN) return;
+  if (!tinOnly){
+    svg.querySelectorAll(`[data-key="${CSS.escape(key)}"]`).forEach(e => { e.classList.remove('hot'); e.classList.add('soldered'); });
+    blob.remove();
+  } else {
+    svg.querySelectorAll(`[data-key="${CSS.escape(key)}"]`).forEach(e => e.classList.remove('hot'));
+    blob.remove();
+    svg.querySelectorAll(`[data-key="${CSS.escape(key)}"]`).forEach(e => e.classList.add('soldered'));
+  }
+}
+function bridge(ref){
+  const c = BOARDS[B].comps.find(c => c.ref === ref);
+  const pts = c.pads.flatMap(p => p.pts.map(q => tp(q[0], q[1], SIDE)));
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const r = el('rect', {x: x0, y: y0 + (y1 - y0) * .15, width: x1 - x0, height: (y1 - y0) * .7, rx: (y1 - y0) * .35, fill: '#eef1f4', stroke: '#8c96a0', 'stroke-width': 3}, ovl());
+  r.animate?.([{transform: 'scaleX(0)'}, {transform: 'scaleX(1)'}], {duration: 450, easing: 'ease-out'});
+  r.style.transformBox = 'fill-box'; r.style.transformOrigin = 'left center';
+}
+
+/* ---------- 右侧卡片 ---------- */
+const aside = document.getElementById('steps');
+function renderCards(){
+  const list = steps();
+  let html = '', lastG = '';
+  if (B === 'eye') html += `<p class="intro">依据原版 EasyEDA 工程逐个提取焊盘坐标渲染，比例与实物一致。<b>这块板要做 2 块</b>（眼睛、眉毛各一块）。</p>`;
+  else html += `<p class="intro">依据原版 EasyEDA 工程逐个提取焊盘坐标渲染，比例与实物一致。</p>`;
+  list.forEach((s, i) => {
+    if (s.g !== lastG){ html += `<div class="group-h">${s.g}</div>`; lastG = s.g; }
+    const chips = (s.chips || []).map(c => `<span class="chip"><b>${c[0]}</b> ${c[1]}</span>`).join('');
+    html += `<div class="card ${i === IDX ? 'active' : ''} ${DONE.has(i) ? 'done' : ''}" data-i="${i}">
+      <div class="card-h"><span class="num">${i + 1}</span><h3>${s.t}${s.opt ? '<span class="opt">可选</span>' : ''}</h3>
+      <label class="chk" onclick="event.stopPropagation()"><input type="checkbox" data-c="${i}" ${DONE.has(i) ? 'checked' : ''}>完成</label></div>
+      <div class="body">${chips ? `<div class="chips">${chips}</div>` : ''}${s.html || ''}
+      ${s.lcd ? `<div class="note">预期读数（${s.mode}）：<b>${s.lcd}</b></div>` : ''}</div></div>`;
+  });
+  aside.innerHTML = html;
+  aside.querySelectorAll('.card').forEach(c => c.onclick = () => run(+c.dataset.i));
+  aside.querySelectorAll('input[data-c]').forEach(cb => cb.onchange = () => {
+    const i = +cb.dataset.c; cb.checked ? DONE.add(i) : DONE.delete(i); saveDone(DONE); progress();
+    cb.closest('.card').classList.toggle('done', cb.checked);
+  });
+  progress();
+  const a = aside.querySelector('.card.active');
+  if (a && !isVisible(a)) a.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+function isVisible(e){ const r = e.getBoundingClientRect(), pr = aside.getBoundingClientRect(); return r.top >= pr.top && r.bottom <= pr.bottom; }
+function progress(){
+  const n = steps().length;
+  document.getElementById('ptext').textContent = `已完成 ${DONE.size} / ${n}`;
+  document.getElementById('pbar').style.width = (DONE.size / n * 100) + '%';
+}
+
+/* ---------- 交互 ---------- */
+function selectBoard(b){
+  B = b; IDX = 0; SIDE = 'top'; CAM = null; DONE = doneSet();
+  document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.b === b));
+  document.getElementById('sidebadge').textContent = '正面（Top）'; document.getElementById('sidebadge').classList.remove('bottom');
+  build(); run(0, {instant: true});
+}
+document.querySelectorAll('#tabs button').forEach(x => x.onclick = () => selectBoard(x.dataset.b));
+document.getElementById('bprev').onclick = () => IDX > 0 && run(IDX - 1);
+document.getElementById('bnext').onclick = () => IDX < steps().length - 1 && run(IDX + 1);
+document.getElementById('breplay').onclick = () => run(IDX);
+document.getElementById('bflip').onclick = () => { TOKEN++; setSide(SIDE === 'top' ? 'bottom' : 'top'); };
+document.getElementById('ball').onclick = () => {
+  TOKEN++; clearOvl(); document.getElementById('readout').classList.remove('show'); document.getElementById('iron').style.opacity = 0;
+  svg.querySelectorAll('.comp').forEach(g => g.classList.remove('dim', 'active'));
+  setCam(boardBox(SIDE));
+};
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') document.getElementById('bnext').click();
+  if (e.key === 'ArrowLeft') document.getElementById('bprev').click();
+});
+const tip = document.getElementById('tip');
+function showTip(e){
+  const t = e.target.closest?.('[data-key]');
+  if (!t){ tip.style.display = 'none'; return; }
+  const p = PADS[t.dataset.key];
+  const c = p.comp;
+  tip.innerHTML = `<b>${p.ref}</b> 第 ${p.num} 脚 · ${p.net || '未连接'}<br><span style="opacity:.75">${c.part || ''}${c.lcsc ? ' · ' + c.lcsc : ''}${c.layer === 2 ? ' · 背面元件' : ''}</span>`;
+  tip.style.display = 'block';
+  const x = (e.touches ? e.touches[0].clientX : e.clientX), y = (e.touches ? e.touches[0].clientY : e.clientY);
+  tip.style.left = Math.min(x + 12, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (y + 14) + 'px';
+}
+svg.addEventListener('pointermove', showTip);
+svg.addEventListener('pointerdown', showTip);
+svg.addEventListener('pointerleave', () => tip.style.display = 'none');
+addEventListener('resize', () => { if (CAM_TARGET) setCam(compBoxFromCam(), 0); });
+function compBoxFromCam(){ const c = CAM_TARGET; return [c[0] + c[2] * .1, c[1] + c[3] * .1, c[0] + c[2] * .9, c[1] + c[3] * .9]; }
+
+const H = new URLSearchParams(location.hash.slice(1));
+FF = H.has('ff'); if (FF) document.documentElement.classList.add('ff');
+selectBoard(H.get('b') === 'mouth' ? 'mouth' : 'eye');
+if (H.get('s')) run(+H.get('s') - 1);
+addEventListener('hashchange', () => location.reload());
+</script>
+</body>
+</html>

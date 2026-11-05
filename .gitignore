@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+.pytest_cache/
+upstream/
+models/
+datasets/
+outputs/
+*.egg-info/
+*.zip
+.DS_Store
+.env
+# 打印文件：只放给协作者补打的小包，完整打印包在 GitHub Release
+!print_package/
+print_package/*
+!print_package/给朋友打印_2026-11-01/
+# PCB 的 Gerber 和工程包要跟仓库走
+!pcb/*.zip
+# 情感模块：只留代码和汇总表
+emo_bench/report/
+emo_bench/results/*
+!emo_bench/results/*.md

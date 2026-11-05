@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>情感识别测评报告</title>
+<style>
+:root{
+  --bg:#f7f7f5;--panel:#ffffff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e3e0;--soft:#f0f0ec;
+  --accent:#2f6fde;--ok:#2e9d5b;--ok-soft:#d8f0e1;--bad:#d2493c;--bad-soft:#f8dcd8;--na:#c9c9c4;
+  --warn-bg:#fff5d6;--warn-ink:#7a5a00;--chip:#eef2fb;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141416;--panel:#1d1d20;--ink:#ececee;--muted:#9a9aa2;--line:#323238;--soft:#26262b;
+  --accent:#6ea0ff;--ok:#4cc27e;--ok-soft:#1f3a2a;--bad:#ef6a5c;--bad-soft:#45231f;--na:#4a4a50;
+  --warn-bg:#3a3012;--warn-ink:#f1d27a;--chip:#232a3a;}}
+:root[data-theme="dark"]{
+  --bg:#141416;--panel:#1d1d20;--ink:#ececee;--muted:#9a9aa2;--line:#323238;--soft:#26262b;
+  --accent:#6ea0ff;--ok:#4cc27e;--ok-soft:#1f3a2a;--bad:#ef6a5c;--bad-soft:#45231f;--na:#4a4a50;
+  --warn-bg:#3a3012;--warn-ink:#f1d27a;--chip:#232a3a;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+main.wrap{overflow-x:clip}
+.panel,.card,.anat>div,.find>div,.detail>div{min-width:0}
+header.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+header.top .wrap{display:flex;gap:16px;align-items:center;height:52px;overflow-x:auto;white-space:nowrap}
+header.top b{font-size:15px}
+header.top nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-right:14px}
+header.top nav a:hover{color:var(--ink)}
+h1{font-size:28px;line-height:1.25;margin:36px 0 8px}
+h2{font-size:22px;margin:48px 0 6px;scroll-margin-top:64px}
+h3{font-size:17px;margin:24px 0 8px}
+.lead{color:var(--muted);max-width:820px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .k{font-size:13px;color:var(--muted)}
+.card .v{font-size:26px;font-weight:650;margin:2px 0}
+.card .s{font-size:13px;color:var(--muted)}
+.warn{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:10px 14px;font-size:14px;margin:12px 0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.chip{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+select{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);max-width:100%}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+th{font-weight:600;color:var(--muted);font-size:13px;background:var(--panel);position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.grp td{background:var(--soft);font-weight:600;font-size:13px;color:var(--muted)}
+.cell{cursor:pointer;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;border-radius:6px;min-width:64px}
+.cell.empty{color:var(--na);cursor:default;font-weight:400}
+.tag{display:inline-block;font-size:12px;border-radius:6px;padding:0 6px;background:var(--chip);color:var(--muted);margin-left:4px;white-space:nowrap}
+.lab{display:inline-block;border-radius:6px;padding:1px 8px;font-size:13px;font-weight:600;color:#fff;white-space:nowrap}
+/* 解剖图 */
+.anat{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+@media (max-width:820px){.anat{grid-template-columns:1fr}}
+.big{font-size:44px;font-weight:700;line-height:1}
+.scale{position:relative;height:34px;margin:18px 0 26px;border-radius:8px;background:linear-gradient(90deg,var(--bad-soft),var(--soft) 40%,var(--ok-soft))}
+.scale .mk{position:absolute;top:-6px;width:2px;height:46px;background:var(--ink)}
+.scale .mk span{position:absolute;top:48px;left:50%;transform:translateX(-50%);font-size:12px;white-space:nowrap;color:var(--muted)}
+.scale .mk.me{background:var(--accent);width:4px}
+.scale .mk.me span{color:var(--accent);font-weight:700;top:-22px}
+.clsrow{display:flex;align-items:center;gap:8px;margin:5px 0}
+.clsrow .nm{width:92px;flex:none;font-size:13px}
+.clsrow .sq{display:flex;gap:3px;flex-wrap:wrap}
+.sq i{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:5px;font-style:normal;font-size:11px;font-weight:700;cursor:pointer;color:#fff}
+.sq i.ok{background:var(--ok)}.sq i.bad{background:var(--bad)}.sq i.na{background:var(--na)}
+.clsrow .rc{font-size:13px;color:var(--muted);width:64px;flex:none;text-align:right}
+.cm td{text-align:center;padding:4px;font-size:12px;min-width:34px;border:1px solid var(--line)}
+.cm th{font-size:12px;text-align:center;padding:4px;position:static}
+/* 样本浏览 */
+.heat{display:inline-block}
+.heat table{width:auto;border-collapse:separate;border-spacing:2px}
+.heat td{padding:0;border:0}
+.heat td.h{width:15px;height:18px;border-radius:3px;cursor:pointer}
+.heat td.h.ok{background:var(--ok)}.heat td.h.bad{background:var(--bad)}.heat td.h.na{background:var(--na)}
+.heat td.h.sel{outline:2px solid var(--accent);outline-offset:1px}
+.heat td.mn{font-size:12px;white-space:nowrap;padding-right:8px;text-align:right;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.heat td.ua{font-size:12px;color:var(--muted);padding-left:6px;font-variant-numeric:tabular-nums}
+.heat td.gold{height:8px;border-radius:2px}
+.heat th.gl{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:0 0 2px;position:static;background:none}
+.detail{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:18px}
+@media (max-width:860px){.detail{grid-template-columns:1fr}}
+video{width:100%;border-radius:10px;background:#000}
+.ctx{color:var(--muted);font-size:13px;border-left:3px solid var(--line);padding-left:10px;margin:8px 0}
+.preds{columns:2;column-gap:18px}
+@media (max-width:600px){.preds{columns:1}}
+.pr{break-inside:avoid;display:flex;gap:8px;align-items:baseline;padding:3px 0;border-bottom:1px dashed var(--line);font-size:13px}
+.pr .mk2{font-weight:700;width:16px;flex:none}
+.pr .mk2.ok{color:var(--ok)}.pr .mk2.bad{color:var(--bad)}.pr .mk2.na{color:var(--na)}
+.pr .nm{flex:1;min-width:0}
+.pr .raw{color:var(--muted);font-size:12px}
+.fig{max-width:100%;border-radius:10px;border:1px solid var(--line);background:#fff}
+.find{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:820px){.find{grid-template-columns:1fr}}
+footer{color:var(--muted);font-size:13px;margin:48px 0 32px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;font:inherit;font-size:13px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin:0 4px 0 10px}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <b>情感识别测评</b>
+  <nav><a href="#overview">结论</a><a href="#anatomy">分数长什么样</a><a href="#matrix">方法对照</a><a href="#samples">逐条样本</a><a href="#imbalance">不平衡陷阱</a><a href="#findings">关键发现</a><a href="#accept">验收对照</a></nav>
+  <button class="btn" id="themeBtn" style="margin-left:auto">深 / 浅</button>
+</div></header>
+
+<main class="wrap">
+<h1>人脸 / 语音 / 文本情绪识别：前沿方法测评</h1>
+<p class="lead">2026-10-19 · 1×RTX 4090 + 闭源 API。四个数据集（三个英文音视频、一个中文文本），从手工特征、自监督模型、大模型到闭源全模态 API 逐一测试。本页所有对比都可以点进去看<b>具体是哪几条样本对了、哪几条错了</b>，以及每条样本到底长什么样。</p>
+
+<section id="overview">
+<h2>一句话结论</h2>
+<div class="grid4" id="heroCards"></div>
+<div class="panel">
+<ol style="margin:0;padding-left:20px">
+<li><b>表演数据上，本地专用模型比闭源大模型高 20–35 分。</b>同一批样本里，RAVDESS 上语音 + 人脸融合 89.3，最好的闭源 66.1。</li>
+<li><b>真实对话（MELD）上反过来，闭源全模态更好——但它强在"听懂台词"，不是"看懂表情"。</b>所有模型只看画面都在 9–29 之间，接近随机。</li>
+<li><b>文本是对话场景最可靠的一路</b>：Qwen3-8B + LoRA + 上文在两个对话数据集上都是本地最好。</li>
+<li><b>部署时最大的损失在语音转文字（ASR）</b>：同一个文本模型换成 ASR 转写，macro-F1 掉 13–18 分。</li>
+<li><b>多人画面里，人脸模型找错了人。</b>"取画面最大的脸"经常不是正在说话的人，部署前必须加说话人检测。</li>
+</ol>
+</div>
+<div class="warn">读数前先看这一条：闭源模型只测了<b>每个数据集 56 条</b>（每类 8 条，类别均衡）。56 条的 UA 误差约 <b>±13 分</b>（95% 置信区间），所以相差 10 分以内的两个方法，不能说谁更好。本地模型也在<b>同一批 56 条</b>上重算了分数，保证可比。</div>
+</section>
+
+<section id="anatomy">
+<h2>一个分数长什么样</h2>
+<p class="lead">选一个数据集和一个方法：左边是它在 56 条样本上的逐条对错（每行一个情绪类别、每格一条样本，格子里的字母是它<b>判成了</b>什么），右边是混淆矩阵。点任意格子可以跳到那条样本看视频。</p>
+<div class="panel">
+  <div class="row"><select id="anDs"></select><select id="anM"></select></div>
+  <div class="anat" style="margin-top:12px">
+    <div>
+      <div class="row" style="align-items:flex-end;gap:18px">
+        <div><div class="small muted">UA（各类召回率的平均）</div><div class="big" id="anUA"></div></div>
+        <div><div class="small muted">答对</div><div style="font-size:24px;font-weight:650" id="anCorrect"></div></div>
+        <div><div class="small muted">macro-F1</div><div style="font-size:24px;font-weight:650" id="anF1"></div></div>
+      </div>
+      <div class="scale" id="anScale"></div>
+      <p id="anSentence" class="small"></p>
+      <div id="anRows"></div>
+      <div class="small muted legend" style="margin-top:8px">格子：<i style="background:var(--ok)"></i>判对 <i style="background:var(--bad)"></i>判错（字母 = 判成的类） <i style="background:var(--na)"></i>没有结果</div>
+    </div>
+    <div>
+      <h3 style="margin-top:0">混淆矩阵</h3>
+      <p class="small muted">行 = 真实情绪，列 = 模型判成的情绪，数字 = 条数。对角线（深色）是判对的；某一列特别深，说明模型偏爱把东西判成那一类。</p>
+      <div class="scroll" id="anCM"></div>
+      <div id="anRaw" class="small muted" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+<details class="panel"><summary><b>UA、WA、macro-F1 分别是什么？</b></summary>
+<ul class="small">
+<li><b>WA</b>（weighted accuracy）= 普通准确率 = 答对条数 ÷ 总条数。类别不均衡时会被多数类绑架。</li>
+<li><b>UA</b>（unweighted accuracy，也叫 UAR）= 先算每个类别各自认对了几成（召回率），再把这些比例平均。每个类别一样重要。随机乱猜 7 类的 UA 是 14.3，6 类是 16.7。在本页 56 条的子集里每类数量相等，所以 UA = WA。</li>
+<li><b>macro-F1</b>：每个类别的 F1（同时考虑"认出来了多少"和"判成这一类的有多少是真的"）再平均。比 UA 多惩罚一种错误：把一大堆别的类都判成同一类。</li>
+<li>粗略的感觉：<b>UA 30</b> 大约是"比瞎猜好，但每类 8 条只能认对 2–3 条"；<b>UA 60</b> 是"大部分能认对，容易混的类（害怕 / 惊讶、悲伤 / 中性）经常错"；<b>UA 85+</b> 是"基本只在个别样本上出错"。</li>
+</ul></details>
+</section>
+
+<section id="matrix">
+<h2>方法对照总表</h2>
+<p class="lead">行是方法，列是数据集；颜色越绿分数越高，灰色表示随机水平附近。点任意格子，会在上面"一个分数长什么样"里打开它。</p>
+<div class="panel">
+  <div class="row">
+    <div class="chips" id="mxView"></div>
+    <div class="chips" id="mxMetric"></div>
+  </div>
+  <div class="chips" id="mxMod"></div>
+  <div class="scroll" id="mxTable"></div>
+  <p class="small muted" id="mxNote"></p>
+</div>
+</section>
+
+<section id="samples">
+<h2>逐条样本对照</h2>
+<p class="lead">每一列是一条样本（按真实情绪分组，顶上色条是类别），每一行是一个方法：绿 = 判对，红 = 判错。点一列看这条样本的视频 / 文字和所有方法的回答。可以按"难度"排序，找出所有方法都错的样本。</p>
+<div class="panel">
+  <div class="row"><div class="chips" id="smDs"></div></div>
+  <div class="row"><span class="small muted">样本排序：</span><div class="chips" id="smSort"></div><span class="small muted">方法：</span><div class="chips" id="smFilt"></div></div>
+  <div class="scroll" style="margin-top:8px"><div class="heat" id="smHeat"></div></div>
+</div>
+<div class="panel" id="smDetail"></div>
+</section>
+
+<section id="imbalance">
+<h2>不平衡数据上的分数陷阱</h2>
+<p class="lead">上面的 56 条是"每类等量"抽的。真实的完整测试集非常不均衡（MELD 里 48% 是 neutral），这时同一个模型的 WA 和 UA 会差很多。下面是几个代表性方法在<b>完整测试集</b>上的混淆矩阵（按行归一化成百分比，括号里是该类的样本数）。</p>
+<div class="panel">
+  <div class="chips" id="fcSel"></div>
+  <div class="anat">
+    <div class="scroll" id="fcCM"></div>
+    <div id="fcText" class="small"></div>
+  </div>
+</div>
+</section>
+
+<section id="findings">
+<h2>关键发现</h2>
+<div class="find panel">
+  <div><img class="fig" src="figs/fig2_meld_modes.png" alt="MELD 四种输入对比"></div>
+  <div><h3 style="margin-top:0">在真实对话里，加画面经常更差</h3>
+  <p class="small"><b>怎么读：</b>横轴是 4 个全模态模型，纵轴是同一批 56 条 MELD 样本上的 UA；蓝 = 只给音频，橙 = 只给无声视频，绿 = 视频 + 音频，紫 = 再加台词文字。灰色虚线是随机水平。数字来自模型回答，不是训练曲线。</p>
+  <p class="small">橙柱全部贴着随机线；4 个模型里 3 个"加了画面"（绿）不如"只听声音"（蓝）。原因可以在<a href="#samples" onclick="gotoSample('meld','test_dia12_utt5')">逐条样本</a>里看到：MELD 的镜头经常对着听的人、或者多人同框。</p></div>
+</div>
+<div class="find panel">
+  <div><img class="fig" src="figs/fig3_asr_gap.png" alt="ASR 代价"></div>
+  <div><h3 style="margin-top:0">ASR 比换分类器更重要</h3>
+  <p class="small"><b>怎么读：</b>横轴是 6 种文本方法，纵轴是 MELD 完整测试集（2,610 句）的 macro-F1。蓝柱用人工标注台词，橙柱用 SenseVoice 自动转写，红字是两者之差。</p>
+  <p class="small">每种方法换成 ASR 都掉 13–18 分，而最好和最差的文本方法之间（蓝柱之间）也就差 20 分左右。部署时先换更好的中文 ASR，收益最大。</p></div>
+</div>
+<div class="find panel">
+  <div><img class="fig" src="figs/fig1_generations.png" alt="三代方法"></div>
+  <div><h3 style="margin-top:0">三代方法：表演数据上提升明显，到对话全部塌掉</h3>
+  <p class="small"><b>怎么读：</b>横轴是三个数据集，纵轴是完整测试集上的 UA。浅蓝 / 深蓝 = 语音第 1 / 2 代（eGeMAPS / WavLM），浅橙 / 深橙 = 人脸第 1 / 2 代（HOG / EmotiEffNet），绿 = 语音 + 人脸融合。</p>
+  <p class="small">表演数据上第 2 代比第 1 代高 10–27 分，融合再高 5–7 分；MELD 上所有方法都落到 15–36。</p></div>
+</div>
+</section>
+
+<section id="accept">
+<h2>对照验收标准</h2>
+<div class="panel scroll"><table>
+<thead><tr><th>编号</th><th>内容</th><th>结果</th><th>状态</th></tr></thead>
+<tbody>
+<tr><td>B4</td><td>SER 线性探针，按 EmoBox 划分，UA 差 ≤ 2</td><td>WavLM-large 固定最后一层，RAVDESS 73.0 vs EmoBox 72.0（用 WavLM 替代 emotion2vec+ large）</td><td>✅ RAVDESS（替代）</td></tr>
+<tr><td>B5</td><td>SenseVoice 零样本 vs README</td><td>RAVDESS 49.3（开 ban_emo_unk）/ 16.2（默认）；未与 README 逐项核对</td><td>⏳</td></tr>
+<tr><td>B7</td><td>LLM ERC 比 RoBERTa 高 ≥ 3 macro-F1</td><td>CPED +7.1，MELD +8.2（CPED / MELD 替代 M3ED）</td><td>✅</td></tr>
+<tr><td>C1 单模态</td><td>各模态最佳 UA ≥ 25</td><td>MELD：文本 49.8、语音 35.8 通过；人脸 22.2 不通过（找错人）</td><td>⚠ 部分</td></tr>
+<tr><td>C1 融合</td><td>融合 ≥ 最佳单模态 + 3</td><td>RAVDESS +5.2、CREMA-D +7.1 ✅；MELD 标注文本 −5.3 ❌；MELD ASR 文本 +4.6 ✅</td><td>⚠ 部署条件下通过</td></tr>
+<tr><td>C1 Omni</td><td>端到端和 late fusion 对比</td><td>MELD 同一批 56 条：闭源 omni（音视频 + 字幕）46.8–55.1 &gt; 本地 late fusion 37.5；表演数据相反</td><td>✅ 已报告</td></tr>
+<tr><td>C1 ASR</td><td>ASR 代价 &gt; 5 要分析</td><td>13–18 分，见关键发现</td><td>✅</td></tr>
+<tr><td>B1–B3、B6</td><td>AffectNet / DFEW / M3ED 上复现</td><td>数据集授权没拿到</td><td>⏸</td></tr>
+<tr><td>A、C2、C3、D、E</td><td>实时管线、自采数据、鲁棒性、延迟</td><td>需要机器人头实机</td><td>⏸</td></tr>
+</tbody></table></div>
+</section>
+
+<footer>
+数据：RAVDESS（CC BY-NC-SA）、CREMA-D（ODbL）、MELD（GPL-3.0，研究用）、CPED（研究用）。视频片段仅用于研究展示。<br>
+原始数字：<code>emo_bench/results/results.jsonl</code>；闭源原始回答：<code>emo_bench/results/api_cache/</code>；本页由 <code>src/build_report.py</code> 生成。<a href="dataset_preview/index.html">数据集预览页</a>。完整文字报告见笔记 <code>情感识别模块/06-实验报告.md</code>。
+</footer>
+</main>
+
+<script>
+const DATA = /*__DATA__*/null;
+const ZH = {neutral:"中性",happy:"高兴",sad:"悲伤",angry:"生气",surprise:"惊讶",fear:"害怕",disgust:"厌恶",invalid:"答非所问"};
+const LC = {neutral:"#8a8f98",happy:"#e0a100",sad:"#3f7fd9",angry:"#d2493c",surprise:"#a35bd1",fear:"#2a9d8f",disgust:"#6b8e23",invalid:"#999"};
+const AB = {neutral:"N",happy:"H",sad:"S",angry:"A",surprise:"Su",fear:"F",disgust:"D",invalid:"?"};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const lab = c => `<span class="lab" style="background:${LC[c]||"#999"}">${ZH[c]||c}</span>`;
+const DS = Object.fromEntries(DATA.datasets.map(d => [d.id, d]));
+const chance = d => 100 / d.labels.length;
+const srcTag = m => m.source === "本地" ? "本地" : (m.provider || m.source);
+
+const store = {get(k,d){try{return localStorage.getItem(k)??d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+(function(){const t=store.get("theme",null); if(t) document.documentElement.dataset.theme=t;
+  $("#themeBtn").onclick=()=>{const dark=matchMedia("(prefers-color-scheme: dark)").matches;
+    const cur=document.documentElement.dataset.theme||(dark?"dark":"light"); const nx=cur==="dark"?"light":"dark";
+    document.documentElement.dataset.theme=nx; store.set("theme",nx);};})();
+
+function heatColor(v, lo, hi){
+  if (v == null) return "transparent";
+  const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim().startsWith("#1");
+  const h = 10 + t * 120, s = 55 + t * 10, l = dark ? 22 + t * 12 : 92 - t * 34;
+  return `hsl(${h} ${s}% ${l}%)`;
+}
+function chips(el, items, cur, onPick){
+  el.innerHTML = items.map(([v,t]) => `<button class="chip ${v===cur?"on":""}" data-v="${esc(v)}">${t}</button>`).join("");
+  el.querySelectorAll(".chip").forEach(b => b.onclick = () => onPick(b.dataset.v));
+}
+
+/* ---------- 结论卡片 ---------- */
+(function(){
+  const out = [];
+  for (const d of DATA.datasets){
+    const loc = d.methods.filter(m => m.source === "本地").sort((a,b) => b.UA - a.UA)[0];
+    const api = d.methods.filter(m => m.source !== "本地").sort((a,b) => b.UA - a.UA)[0];
+    out.push(`<div class="card"><div class="k">${esc(d.title)} · 同一批 ${d.samples.length} 条</div>
+      <div class="v">${loc.UA} <span class="small muted">vs</span> ${api.UA}</div>
+      <div class="s">本地最好：${esc(loc.name)}<br>闭源最好：${esc(api.name)}</div></div>`);
+  }
+  $("#heroCards").innerHTML = out.join("");
+})();
+
+/* ---------- 分数解剖 ---------- */
+const AN = {ds: store.get("anDs","meld"), m: null};
+function fillAnatomySelect(){
+  $("#anDs").innerHTML = DATA.datasets.map(d => `<option value="${d.id}" ${d.id===AN.ds?"selected":""}>${esc(d.title)}</option>`).join("");
+  const d = DS[AN.ds];
+  const ms = [...d.methods].sort((a,b) => b.UA - a.UA);
+  if (!AN.m || !d.methods.find(m => m.id === AN.m)) AN.m = ms[0].id;
+  $("#anM").innerHTML = ms.map(m => `<option value="${esc(m.id)}" ${m.id===AN.m?"selected":""}>${esc(m.name)}（${srcTag(m)}，UA ${m.UA}）</option>`).join("");
+}
+function renderAnatomy(){
+  fillAnatomySelect();
+  const d = DS[AN.ds], m = d.methods.find(x => x.id === AN.m);
+  $("#anUA").textContent = m.UA.toFixed(1);
+  $("#anF1").textContent = m.F1.toFixed(1);
+  $("#anCorrect").innerHTML = `${m.correct} <span class="small muted">/ ${d.samples.length}</span>`;
+  const others = d.methods.filter(x => x !== m).map(x => x.UA);
+  const best = Math.max(...d.methods.map(x => x.UA));
+  const per = Math.round(d.samples.length / d.labels.length);
+  const al = x => x < 20 ? "left:0;transform:none" : x > 80 ? "left:auto;right:0;transform:none" : "";
+  $("#anScale").innerHTML =
+    `<div class="mk" style="left:${chance(d)}%"><span style="${al(chance(d))}">随机 ${chance(d).toFixed(1)}</span></div>` +
+    (best - m.UA > 0.05 ? `<div class="mk" style="left:${best}%"><span style="${al(best)}">本数据集最好 ${best}</span></div>` : "") +
+    `<div class="mk me" style="left:${m.UA}%"><span style="${al(m.UA)}">${m.UA}${best - m.UA <= 0.05 ? "（本数据集最好）" : ""}</span></div>`;
+  const nAns = m.n, miss = d.samples.length - nAns;
+  const recs = d.labels.map(c => [c, m.recall[c]]).filter(x => x[1] != null).sort((a,b) => b[1]-a[1]);
+  $("#anSentence").innerHTML = `平均每个类别 ${per} 条里认对 <b>${(m.UA/100*per).toFixed(1)}</b> 条。` +
+    `最擅长 ${lab(recs[0][0])}（${Math.round(recs[0][1]*per)}/${per}），最差 ${lab(recs.at(-1)[0])}（${Math.round(recs.at(-1)[1]*per)}/${per}）。` +
+    (miss ? ` 另有 ${miss} 条没有拿到结果（灰格，不计分）。` : "") +
+    (m.UA < chance(d) + 8 ? ` <b>这个分数和随机乱猜差不多。</b>` : "");
+  // 每类一行
+  const rows = d.labels.map(c => {
+    const idx = d.samples.map((s,i) => [s,i]).filter(([s]) => s.label === c);
+    const sq = idx.map(([s,i]) => {
+      const p = m.preds[i];
+      const cls = p == null ? "na" : (p === c ? "ok" : "bad");
+      const t = p == null ? "" : (p === c ? "" : AB[p]);
+      return `<i class="${cls}" title="${esc(s.key)}：判成 ${ZH[p]||"无结果"}" onclick="gotoSample('${d.id}','${esc(s.key)}')">${t}</i>`;
+    }).join("");
+    const ok = idx.filter(([s,i]) => m.preds[i] === c).length;
+    return `<div class="clsrow"><div class="nm">${lab(c)}</div><div class="sq">${sq}</div><div class="rc">${ok}/${idx.length}</div></div>`;
+  }).join("");
+  $("#anRows").innerHTML = rows;
+  // 混淆矩阵
+  const cols = d.labels.concat(m.cm.some(r => r.at(-1) > 0) ? ["invalid"] : []);
+  const mx = Math.max(...m.cm.flat(), 1);
+  let h = `<table class="cm"><tr><th>真实 \\ 判成</th>${cols.map(c => `<th>${ZH[c]}</th>`).join("")}</tr>`;
+  m.cm.forEach((r, i) => {
+    h += `<tr><th>${ZH[d.labels[i]]}</th>` + cols.map((c, j) => {
+      const v = r[j] || 0, diag = i === j;
+      const bg = v ? (diag ? `color-mix(in srgb,var(--ok) ${25+75*v/mx}%,transparent)` : `color-mix(in srgb,var(--bad) ${15+70*v/mx}%,transparent)`) : "transparent";
+      return `<td style="background:${bg}">${v || ""}</td>`;
+    }).join("") + "</tr>";
+  });
+  $("#anCM").innerHTML = h + "</table>";
+  // 偏好
+  const colSum = cols.map((c, j) => m.cm.reduce((a, r) => a + (r[j] || 0), 0));
+  const top = colSum.indexOf(Math.max(...colSum));
+  let txt = colSum[top] > 1.8 * (nAns / d.labels.length) ? `这个方法明显偏爱判 ${lab(cols[top])}：${colSum[top]} 条被判成这一类（真实只有 ${per} 条）。` : "";
+  if (m.raw) txt += ` 闭源模型原始回答示例：` + [...new Set(m.raw.filter(Boolean))].slice(0, 4).map(r => `「${esc(r)}」`).join(" ");
+  $("#anRaw").innerHTML = txt;
+  store.set("anDs", AN.ds);
+}
+$("#anDs").onchange = e => { AN.ds = e.target.value; AN.m = null; renderAnatomy(); };
+$("#anM").onchange = e => { AN.m = e.target.value; renderAnatomy(); };
+function openAnatomy(ds, mid){ AN.ds = ds; AN.m = mid; renderAnatomy(); document.getElementById("anatomy").scrollIntoView({behavior:"smooth"}); }
+
+/* ---------- 方法对照总表 ---------- */
+const MX = {view: "sub", metric: "UA", mod: "全部"};
+const MODS = ["全部","语音","人脸","文本","音视频","音视频+文本","融合"];
+const DSNAME_FULL = {ravdess:"RAVDESS", cremad:"CREMA-D", meld:"MELD", cped:"CPED"};
+const FEATNAME = {egemaps:"eGeMAPS + 线性",wavlm:"WavLM-large 探针",e2v_base:"emotion2vec base 探针",e2v_plus:"emotion2vec+ ⚠污染",
+  audeering:"audeering w2v2-dim 探针",sensevoice:"SenseVoice（默认）",sensevoice_ban:"SenseVoice（ban_emo_unk）",hog:"HOG + 线性",
+  enet_b0_8_va_mtl:"EmotiEffNet-B0",enet_b2_8:"EmotiEffNet-B2",dfer_clip_dfew:"DFER-CLIP 零样本",tfidf:"TF-IDF + LR",
+  jhartmann:"j-hartmann ⚠",roberta:"RoBERTa 微调",roberta_ctx:"RoBERTa 微调 + 上文",qwen3_8b_zs:"Qwen3-8B 零样本",
+  qwen3_8b_zs_ctx:"Qwen3-8B 零样本 + 上文",qwen3_8b_lora_ctx:"Qwen3-8B LoRA + 上文"};
+const FEATMOD = f => /egemaps|wavlm|e2v|audeering|sensevoice/.test(f) ? "语音" : /hog|enet|dfer/.test(f) ? "人脸" : "文本";
+function renderMatrix(){
+  chips($("#mxView"), [["sub","同一批 56 条（含闭源）"],["full","完整测试集（仅本地）"]], MX.view, v => {MX.view=v; renderMatrix();});
+  chips($("#mxMetric"), [["UA","UA"],["F1","macro-F1"]].concat(MX.view==="full"?[["WA","WA（准确率）"]]:[["correct","答对条数"]]), MX.metric, v => {MX.metric=v; renderMatrix();});
+  chips($("#mxMod"), MODS.map(x => [x, x]), MX.mod, v => {MX.mod=v; renderMatrix();});
+  if (MX.view === "full" && MX.metric === "correct") MX.metric = "UA";
+  if (MX.view === "sub" && MX.metric === "WA") MX.metric = "UA";
+  MX.view === "sub" ? renderMatrixSub() : renderMatrixFull();
+}
+function renderMatrixSub(){
+  const rows = new Map();
+  for (const d of DATA.datasets) for (const m of d.methods){
+    if (MX.mod !== "全部" && m.modality !== MX.mod) continue;
+    const key = m.name;
+    if (!rows.has(key)) rows.set(key, {name: m.name, src: srcTag(m), source: m.source, fam: m.family, mod: m.modality, cells: {}});
+    rows.get(key).cells[d.id] = m;
+  }
+  const order = ["第1代 手工特征","第2代 自监督","第2代 专用模型","第2代 预训练微调","第3代 大模型","第3代 本地全模态","融合","闭源全模态","闭源大模型"];
+  const list = [...rows.values()].sort((a,b) => (order.indexOf(a.fam) - order.indexOf(b.fam)) || a.name.localeCompare(b.name));
+  let h = `<table><thead><tr><th>方法</th><th>输入</th>${DATA.datasets.map(d => `<th class="num">${esc(d.title)}</th>`).join("")}</tr></thead><tbody>`;
+  let g = null;
+  for (const r of list){
+    if (r.fam !== g){ g = r.fam; h += `<tr class="grp"><td colspan="${2+DATA.datasets.length}">${esc(g)}</td></tr>`; }
+    h += `<tr><td>${esc(r.name)}<span class="tag">${esc(r.src)}</span></td><td class="small muted">${esc(r.mod)}</td>`;
+    for (const d of DATA.datasets){
+      const m = r.cells[d.id];
+      if (!m){ h += `<td class="cell empty">—</td>`; continue; }
+      const v = MX.metric === "correct" ? m.correct : m[MX.metric];
+      const pct = MX.metric === "correct" ? 100 * m.correct / d.samples.length : m[MX.metric];
+      const txt = MX.metric === "correct" ? `${m.correct}/${d.samples.length}` : v.toFixed(1);
+      h += `<td class="cell" style="background:${heatColor(pct, chance(d), 95)}" title="${esc(m.name)} @ ${esc(d.title)}：答对 ${m.correct}/${m.n}" onclick="openAnatomy('${d.id}','${esc(m.id)}')">${txt}${m.n < d.samples.length ? `<sup class="muted">n=${m.n}</sup>` : ""}</td>`;
+    }
+    h += "</tr>";
+  }
+  $("#mxTable").innerHTML = h + "</tbody></table>";
+  $("#mxNote").innerHTML = "颜色从随机水平（偏红）到 95（深绿）。⚠ = 训练数据和测试集有重叠，分数虚高。n&lt;56 表示部分请求失败（限流），按实际拿到的条数计分。";
+}
+function renderMatrixFull(){
+  const rows = new Map();
+  for (const r of DATA.full){
+    const ds = r.ds;
+    let name, mod, fam;
+    if (r.task === "fusion"){ name = r.feat; mod = "融合"; fam = "融合"; }
+    else {
+      const base = FEATNAME[r.feat] || r.feat;
+      name = base + (r.task === "zeroshot" && !/零样本|SenseVoice/.test(base) ? " 零样本" : r.task === "probe" && !/探针|线性/.test(base) ? " 探针" : "") + (r.text === "asr" ? "（ASR 文本）" : "");
+      mod = FEATMOD(r.feat); fam = r.task === "ter" ? "文本" : (r.task === "probe" ? "探针（冻结特征 + 线性）" : "零样本");
+    }
+    if (MX.mod !== "全部" && mod !== MX.mod) continue;
+    if (!rows.has(name)) rows.set(name, {name, mod, fam, cells: {}});
+    rows.get(name).cells[ds] = r;
+  }
+  const dss = ["ravdess","cremad","meld","cped"];
+  const order = ["探针（冻结特征 + 线性）","零样本","文本","融合"];
+  const list = [...rows.values()].sort((a,b) => order.indexOf(a.fam) - order.indexOf(b.fam));
+  let h = `<table><thead><tr><th>方法</th><th>输入</th>${dss.map(d => `<th class="num">${DSNAME_FULL[d]}</th>`).join("")}</tr></thead><tbody>`;
+  let g = null;
+  const nCls = {ravdess:7, cremad:6, meld:7, cped:7};
+  for (const r of list){
+    if (r.fam !== g){ g = r.fam; h += `<tr class="grp"><td colspan="${2+dss.length}">${esc(g)}</td></tr>`; }
+    h += `<tr><td>${esc(r.name)}</td><td class="small muted">${esc(r.mod)}</td>`;
+    for (const d of dss){
+      const c = r.cells[d];
+      h += c ? `<td class="cell" style="background:${heatColor(c[MX.metric], 100/nCls[d], 95)};cursor:default" title="n=${c.n}">${c[MX.metric].toFixed(1)}</td>` : `<td class="cell empty">—</td>`;
+    }
+    h += "</tr>";
+  }
+  $("#mxTable").innerHTML = h + "</tbody></table>";
+  $("#mxNote").innerHTML = "完整测试集：RAVDESS 1,248 条（6 折交叉验证）、CREMA-D 1,856、MELD 2,610、CPED 21,208。MELD / CPED 类别很不均衡，注意比较 WA 和 UA 的差距（见下面「不平衡陷阱」）。";
+}
+
+/* ---------- 逐条样本 ---------- */
+const SM = {ds: store.get("smDs","meld"), sort: "label", filt: "all", sel: null};
+function rateOf(d, i, ms){ const v = ms.map(m => m.preds[i]).filter(p => p != null); return v.length ? v.filter(p => p === d.samples[i].label).length / v.length : 0; }
+function renderSamples(){
+  chips($("#smDs"), DATA.datasets.map(d => [d.id, d.title]), SM.ds, v => {SM.ds=v; SM.sel=null; store.set("smDs",v); renderSamples();});
+  chips($("#smSort"), [["label","按真实情绪"],["hard","最难的在前"],["easy","最容易的在前"]], SM.sort, v => {SM.sort=v; renderSamples();});
+  chips($("#smFilt"), [["all","全部"],["local","只看本地"],["api","只看闭源"]], SM.filt, v => {SM.filt=v; renderSamples();});
+  const d = DS[SM.ds];
+  let ms = d.methods.filter(m => SM.filt === "all" || (SM.filt === "local" ? m.source === "本地" : m.source !== "本地"));
+  ms = [...ms].sort((a,b) => b.UA - a.UA);
+  let idx = d.samples.map((_, i) => i);
+  if (SM.sort !== "label"){ idx.sort((a,b) => (rateOf(d,a,ms) - rateOf(d,b,ms)) * (SM.sort === "hard" ? 1 : -1)); }
+  if (SM.sel == null) SM.sel = idx[0];
+  let h = `<table><tr><td></td>${idx.map(i => `<td class="gold" style="background:${LC[d.samples[i].label]}" title="${ZH[d.samples[i].label]}"></td>`).join("")}<td></td></tr>`;
+  for (const m of ms){
+    h += `<tr><td class="mn" title="${esc(m.name)}">${esc(m.name)}<span class="tag">${esc(srcTag(m))}</span></td>` +
+      idx.map(i => { const p = m.preds[i]; const c = p == null ? "na" : p === d.samples[i].label ? "ok" : "bad";
+        return `<td class="h ${c} ${i===SM.sel?"sel":""}" data-i="${i}" title="${esc(d.samples[i].key)}｜真实 ${ZH[d.samples[i].label]}｜判成 ${ZH[p]||"无结果"}"></td>`; }).join("") +
+      `<td class="ua">${m.UA}</td></tr>`;
+  }
+  h += `<tr><td class="mn small muted">这一列有几成方法判对</td>${idx.map(i => { const r = rateOf(d,i,ms); return `<td class="gold" style="height:14px;background:${heatColor(r*100,0,100)}" title="${Math.round(r*100)}%"></td>`; }).join("")}<td></td></tr>`;
+  $("#smHeat").innerHTML = h + "</table>";
+  $("#smHeat").querySelectorAll("td.h").forEach(td => td.onclick = () => { SM.sel = +td.dataset.i; renderSamples(); });
+  renderDetail(d, ms, idx);
+}
+function renderDetail(d, ms, idx){
+  const i = SM.sel, s = d.samples[i], pos = idx.indexOf(i);
+  const media = s.video ? `<video controls preload="metadata" src="${esc(s.video)}"></video>` : "";
+  const ctx = s.context && s.context.length ? `<div class="ctx">${s.context.map(esc).join("<br>")}</div>` : "";
+  const text = s.text ? `<p><b>${esc(s.speaker)}</b>：“${esc(s.text)}”</p>` : "";
+  const groups = {};
+  for (const m of ms){ (groups[m.source === "本地" ? "本地模型" : "闭源 / API"] ??= []).push(m); }
+  const pr = Object.entries(groups).map(([g, list]) => `<h3>${g}</h3><div class="preds">` + list.map(m => {
+    const p = m.preds[i]; const c = p == null ? "na" : p === s.label ? "ok" : "bad";
+    const extra = m.conf && m.conf[i] != null ? `<span class="raw">置信 ${m.conf[i]}</span>` : (m.raw && m.raw[i] && m.raw[i].toLowerCase().trim() !== p ? `<span class="raw">“${esc(m.raw[i])}”</span>` : "");
+    return `<div class="pr"><span class="mk2 ${c}">${c==="ok"?"✓":c==="bad"?"✗":"·"}</span><span class="nm">${esc(m.name)}</span>${p ? lab(p) : '<span class="muted small">无结果</span>'} ${extra}</div>`;
+  }).join("") + "</div>").join("");
+  const nOk = ms.filter(m => m.preds[i] === s.label).length, nAll = ms.filter(m => m.preds[i] != null).length;
+  $("#smDetail").innerHTML = `<div class="row" style="justify-content:space-between">
+      <div>样本 <code>${esc(s.key)}</code> · 真实情绪 ${lab(s.label)} · <b>${nOk}/${nAll}</b> 个方法判对</div>
+      <div><button class="btn" id="prevS">← 上一条</button> <button class="btn" id="nextS">下一条 →</button></div></div>
+    <div class="detail" style="margin-top:12px"><div>${media}${ctx ? `<div class="small muted" style="margin-top:8px">上文：</div>${ctx}` : ""}${text}
+      ${d.id === "meld" ? `<p class="small muted">注：本地人脸模型只看「画面中最大的人脸」，在多人镜头里常常不是说话人。</p>` : ""}
+      ${d.id === "ter_cped" ? `<p class="small muted">注：CPED 的标签是标注者结合视频和语气给的，只看文字时很多句子本来就判断不出来。</p>` : ""}</div>
+    <div>${pr}</div></div>`;
+  $("#prevS").onclick = () => { SM.sel = idx[(pos - 1 + idx.length) % idx.length]; renderSamples(); };
+  $("#nextS").onclick = () => { SM.sel = idx[(pos + 1) % idx.length]; renderSamples(); };
+}
+function gotoSample(ds, key){
+  SM.ds = ds; SM.sort = "label"; const d = DS[ds]; SM.sel = d.samples.findIndex(s => s.key === key);
+  renderSamples(); document.getElementById("smDetail").scrollIntoView({behavior:"smooth"});
+}
+
+/* ---------- 不平衡 ---------- */
+const FC = {k: Object.keys(DATA.fullcm)[0]};
+function renderFull(){
+  chips($("#fcSel"), Object.entries(DATA.fullcm).map(([k, v]) => [k, v.name]), FC.k, v => {FC.k=v; renderFull();});
+  const c = DATA.fullcm[FC.k], L = c.labels, tot = c.support.reduce((a,b)=>a+b,0);
+  let h = `<table class="cm"><tr><th>真实 \\ 判成</th>${L.map(x => `<th>${ZH[x]}</th>`).join("")}</tr>`;
+  c.cm.forEach((r, i) => {
+    const s = c.support[i];
+    h += `<tr><th>${ZH[L[i]]}<br><span class="muted">(${s})</span></th>` + L.map((_, j) => {
+      const p = s ? r[j] / s : 0, diag = i === j;
+      const bg = p ? (diag ? `color-mix(in srgb,var(--ok) ${20+80*p}%,transparent)` : `color-mix(in srgb,var(--bad) ${10+80*p}%,transparent)`) : "transparent";
+      return `<td style="background:${bg}">${p ? Math.round(p*100) : ""}</td>`;
+    }).join("") + "</tr>";
+  });
+  $("#fcCM").innerHTML = h + "</table>";
+  const maj = c.support.indexOf(Math.max(...c.support)), majP = 100 * c.support[maj] / tot;
+  const wa = 100 * c.correct / c.n;
+  const recs = L.map((x, i) => [x, c.recall[x]]).sort((a,b) => a[1]-b[1]);
+  $("#fcText").innerHTML = `<p><b>准确率（WA）${wa.toFixed(1)}</b>，<b>UA ${c.UA.toFixed(1)}</b>，macro-F1 ${c.F1.toFixed(1)}，共 ${c.n.toLocaleString()} 条。</p>
+    <p>最多的类是 ${lab(L[maj])}，占 ${majP.toFixed(0)}%。一个<b>永远只回答「${ZH[L[maj]]}」的傻模型</b>，准确率也有 ${majP.toFixed(1)}，但 UA 只有 ${(100/L.length).toFixed(1)}。这就是为什么类别不均衡时要看 UA 和 macro-F1，而不是准确率。</p>
+    <p>这个方法认得最差的类：${recs.slice(0,2).map(([x,v]) => `${lab(x)} ${Math.round(v*100)}%`).join("、")}；最好的：${recs.slice(-2).reverse().map(([x,v]) => `${lab(x)} ${Math.round(v*100)}%`).join("、")}。</p>
+    <p class="muted">读法：每行是一个真实类别，数字是这一类有百分之几被判成了各列的类别，每行加起来是 100。对角线 = 召回率。</p>`;
+}
+
+renderAnatomy(); renderMatrix(); renderSamples(); renderFull();
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" font-family="PingFang SC, Helvetica, sans-serif" font-size="15">
+  <rect width="900" height="470" fill="#ffffff"/>
+  <!-- wall -->
+  <rect x="20" y="190" width="90" height="70" rx="8" fill="#eee" stroke="#555"/>
+  <text x="65" y="220" text-anchor="middle">墙上插座</text>
+  <text x="65" y="242" text-anchor="middle" fill="#777">220V</text>
+  <line x1="110" y1="225" x2="160" y2="225" stroke="#555" stroke-width="3"/>
+  <!-- adapter -->
+  <rect x="160" y="185" width="140" height="80" rx="8" fill="#333"/>
+  <text x="230" y="218" text-anchor="middle" fill="#fff">5V 10A</text>
+  <text x="230" y="242" text-anchor="middle" fill="#fff">电源适配器</text>
+  <line x1="300" y1="225" x2="345" y2="225" stroke="#333" stroke-width="4"/>
+  <text x="322" y="212" text-anchor="middle" font-size="12" fill="#555">DC 圆头</text>
+  <!-- DC jack terminal -->
+  <rect x="345" y="200" width="70" height="50" rx="6" fill="#222"/>
+  <rect x="415" y="195" width="45" height="60" rx="4" fill="#3a9e5f"/>
+  <text x="402" y="280" text-anchor="middle" font-size="13">DC 母头转端子</text>
+  <text x="490" y="203" font-size="15" fill="#c00">+</text>
+  <text x="490" y="262" font-size="15">−</text>
+  <!-- bus -->
+  <line x1="460" y1="210" x2="560" y2="210" stroke="#d22" stroke-width="5"/>
+  <line x1="460" y1="240" x2="560" y2="240" stroke="#111" stroke-width="5"/>
+  <line x1="560" y1="70" x2="560" y2="400" stroke="#d22" stroke-width="5"/>
+  <line x1="575" y1="85" x2="575" y2="415" stroke="#111" stroke-width="5"/>
+  <line x1="560" y1="240" x2="575" y2="240" stroke="#111" stroke-width="5"/>
+  <text x="510" y="300" font-size="12" fill="#555" text-anchor="middle">三路并联</text>
+  <text x="510" y="316" font-size="12" fill="#555" text-anchor="middle">红=+5V 黑=GND</text>
+  <!-- branch mouth -->
+  <line x1="560" y1="70" x2="680" y2="70" stroke="#d22" stroke-width="5"/>
+  <line x1="575" y1="85" x2="680" y2="85" stroke="#111" stroke-width="5"/>
+  <rect x="680" y="55" width="40" height="45" rx="4" fill="#f2c200" stroke="#a80"/>
+  <text x="700" y="120" text-anchor="middle" font-size="12">XT60 公头</text>
+  <rect x="740" y="40" width="140" height="75" rx="6" fill="#1f6e3a"/>
+  <text x="810" y="70" text-anchor="middle" fill="#fff">嘴部板</text>
+  <text x="810" y="92" text-anchor="middle" fill="#fff" font-size="12">XT60 母座 (U1)</text>
+  <text x="590" y="50" font-size="12" fill="#555">粗线 16-18AWG</text>
+  <!-- branch eyes -->
+  <line x1="560" y1="230" x2="680" y2="230" stroke="#d22" stroke-width="3"/>
+  <line x1="575" y1="245" x2="680" y2="245" stroke="#111" stroke-width="3"/>
+  <rect x="680" y="222" width="30" height="32" rx="3" fill="#f5f0e6" stroke="#999"/>
+  <text x="695" y="275" text-anchor="middle" font-size="12">XH 2P 线</text>
+  <rect x="740" y="200" width="140" height="75" rx="6" fill="#1f6e3a"/>
+  <text x="810" y="230" text-anchor="middle" fill="#fff">眼部板</text>
+  <text x="810" y="252" text-anchor="middle" fill="#fff" font-size="12">XH2.54 2P 座</text>
+  <!-- branch brows -->
+  <line x1="560" y1="400" x2="680" y2="400" stroke="#d22" stroke-width="3"/>
+  <line x1="575" y1="415" x2="680" y2="415" stroke="#111" stroke-width="3"/>
+  <rect x="680" y="392" width="30" height="32" rx="3" fill="#f5f0e6" stroke="#999"/>
+  <text x="695" y="445" text-anchor="middle" font-size="12">XH 2P 线</text>
+  <rect x="740" y="370" width="140" height="75" rx="6" fill="#1f6e3a"/>
+  <text x="810" y="400" text-anchor="middle" fill="#fff">眉部板</text>
+  <text x="810" y="422" text-anchor="middle" fill="#fff" font-size="12">XH2.54 2P 座</text>
+  <!-- usb note -->
+  <text x="20" y="40" font-size="14" fill="#555">另外：每块板上的 Pico 用 USB 线接电脑，只传数据、刷固件，</text>
+  <text x="20" y="60" font-size="14" fill="#555">不负责给舵机供电。</text>
+</svg>
