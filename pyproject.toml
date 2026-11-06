@@ -6,11 +6,16 @@ requires-python = ">=3.11,<3.13"
 dependencies = ["numpy", "pyserial", "matplotlib"]
 
 [project.optional-dependencies]
-vision = ["mediapipe", "opencv-python"]
+vision = ["mediapipe", "opencv-python", "emotiefflib", "timm"]
+audio = ["sounddevice", "soundfile"]
+realtime = ["funasr", "emotion2vec", "edge-tts", "miniaudio"]
 dev = ["pytest", "mpremote"]
 
 [tool.setuptools]
-packages = ["head"]
+packages = ["head", "perception", "agent", "app"]
+
+[tool.setuptools.package-data]
+app = ["dashboard.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

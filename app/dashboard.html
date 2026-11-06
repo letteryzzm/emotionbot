@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EmotionBot 实时情绪</title>
+<style>
+  :root{
+    --bg:#fbfbfa; --surface:#ffffff; --border:#e6e4df; --text:#1d1d1f; --muted:#6b6a67;
+    --accent:#2a78d6; --warn:#b87400; --crit:#c53030; --ok:#1b8a5a;
+    --m-face:#2a78d6; --m-speech:#eb6834; --m-text:#1baf7a;
+    --track:#eeece7;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#151619; --surface:#1d1f23; --border:#2e3136; --text:#eceef1; --muted:#9aa0a8;
+      --accent:#3987e5; --warn:#fab219; --crit:#e05252; --ok:#3fbf87;
+      --m-face:#3987e5; --m-speech:#d95926; --m-text:#199e70;
+      --track:#2a2d32;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#151619; --surface:#1d1f23; --border:#2e3136; --text:#eceef1; --muted:#9aa0a8;
+    --accent:#3987e5; --warn:#fab219; --crit:#e05252; --ok:#3fbf87;
+    --m-face:#3987e5; --m-speech:#d95926; --m-text:#199e70;
+    --track:#2a2d32;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:14px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  header{display:flex;align-items:center;gap:16px;padding:14px 20px;
+         border-bottom:1px solid var(--border);background:var(--surface)}
+  header h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+  header .dot.off{background:var(--crit)}
+  header .spacer{flex:1}
+  header .clock{color:var(--muted);font-variant-numeric:tabular-nums}
+  button{font:inherit;color:var(--text);background:var(--surface);
+         border:1px solid var(--border);border-radius:8px;padding:5px 11px;cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  select,input{font:inherit;color:var(--text);background:var(--surface);
+               border:1px solid var(--border);border-radius:8px;padding:5px 9px}
+  main{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;padding:16px 20px 28px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);
+           margin:0 0 10px;font-weight:600}
+  .kpis{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+  .kpi .label{font-size:11px;color:var(--muted);letter-spacing:.6px;text-transform:uppercase}
+  .kpi .value{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+  .kpi .value small{font-size:12px;color:var(--muted);font-weight:400}
+  #facecard{grid-column:span 4}
+  #maincard{grid-column:span 5}
+  #misscard{grid-column:span 3}
+  #timelinecard{grid-column:span 8}
+  #vacard{grid-column:span 4}
+  #tablecard{grid-column:1/-1}
+  canvas{display:block;width:100%}
+  #facewrap{position:relative;aspect-ratio:4/3;background:var(--track);border-radius:10px;overflow:hidden}
+  #face{position:absolute;inset:0;width:100%;height:100%}
+  #cam{position:absolute;right:8px;bottom:8px;width:34%;border-radius:8px;border:1px solid var(--border);
+       display:none;background:#000}
+  .banner{display:none;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+          margin-bottom:12px;font-weight:600;border:1px solid}
+  .banner.show{display:flex}
+  .banner.warn{color:var(--warn);border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+  .hero{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  .hero .label{font-size:34px;font-weight:700;line-height:1.1}
+  .hero .conf{font-size:15px;color:var(--muted);font-variant-numeric:tabular-nums}
+  #asr{font-size:20px;line-height:1.45;min-height:58px;margin:8px 0 4px;font-weight:500}
+  #asr:empty::before{content:"（等待语音…）";color:var(--muted);font-weight:400}
+  .why{color:var(--muted);font-size:13px}
+  .bars{display:flex;flex-direction:column;gap:12px}
+  .barrow .top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+  .barrow .name{display:flex;align-items:center;gap:6px;font-weight:600}
+  .barrow .swatch{width:9px;height:9px;border-radius:2px}
+  .barrow .prob{color:var(--muted);font-variant-numeric:tabular-nums}
+  .track{height:8px;border-radius:5px;background:var(--track);overflow:hidden}
+  .fill{height:100%;border-radius:5px;transition:width .25s ease}
+  .barrow .detail{font-size:11px;color:var(--muted);margin-top:3px}
+  .empty{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+  td.num{font-variant-numeric:tabular-nums}
+  .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;border:1px solid var(--border)}
+  .tag.crit{color:var(--crit);border-color:var(--crit)}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  footer{padding:0 20px 24px;color:var(--muted);font-size:12px}
+  @media (max-width:1100px){
+    #facecard,#maincard,#misscard,#timelinecard,#vacard{grid-column:1/-1}
+    .kpis{grid-template-columns:repeat(3,1fr)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="conn"></span>
+  <h1>EmotionBot · 实时情绪中枢</h1>
+  <span class="clock" id="status">等待数据…</span>
+  <span class="spacer"></span>
+  <select id="expSel" title="手动表情">
+    <option value="">手动表情…</option>
+    <option>happy</option><option>sad</option><option>angry</option>
+    <option>surprised</option><option>fear</option><option>disgust</option>
+    <option>concerned</option><option>thinking</option><option>neutral</option>
+  </select>
+  <input id="sayBox" placeholder="让它说一句话" size="16">
+  <button id="sayBtn">说</button>
+  <button id="restBtn">Rest</button>
+  <button id="themeBtn" title="切换深色/浅色">◐</button>
+</header>
+
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="label">句末 → 决策</div><div class="value" id="kLat">–<small> ms</small></div></div>
+    <div class="kpi"><div class="label">融合置信度</div><div class="value" id="kConf">–</div></div>
+    <div class="kpi"><div class="label">模态覆盖</div><div class="value" id="kCov">–</div></div>
+    <div class="kpi"><div class="label">当前表情</div><div class="value" id="kExp" style="font-size:20px">–</div></div>
+    <div class="kpi"><div class="label">事件数</div><div class="value" id="kCount">0</div></div>
+    <div class="kpi"><div class="label">回声门控</div><div class="value" id="kGate" style="font-size:20px">–</div></div>
+  </section>
+
+  <section class="card" id="facecard">
+    <h2>机器人表情（22 维驱动）</h2>
+    <div id="facewrap">
+      <canvas id="face" width="480" height="360"></canvas>
+      <img id="cam" alt="camera">
+    </div>
+  </section>
+
+  <section class="card" id="maincard">
+    <h2>听懂了吗</h2>
+    <div class="banner" id="banner"></div>
+    <div class="hero"><span class="label" id="fusedLabel">–</span>
+      <span class="conf" id="fusedConf"></span></div>
+    <div id="asr"></div>
+    <div class="why" id="why"></div>
+  </section>
+
+  <section class="card" id="misscard">
+    <h2>三模态</h2>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <section class="card" id="timelinecard">
+    <h2>最近 60 秒</h2>
+    <canvas id="timeline" width="900" height="220"></canvas>
+  </section>
+
+  <section class="card" id="vacard">
+    <h2>效价 / 唤醒</h2>
+    <canvas id="va" width="420" height="300"></canvas>
+  </section>
+
+  <section class="card" id="tablecard">
+    <details id="tableDetails">
+      <summary>事件明细（最近 10 条，排查用）</summary>
+      <table><thead><tr>
+        <th>时间</th><th>文本</th><th>人脸</th><th>语音</th><th>文本情感</th>
+        <th>融合</th><th>矛盾</th><th>表情</th><th>延迟</th>
+      </tr></thead><tbody id="tbody"></tbody></table>
+    </details>
+  </section>
+</main>
+<footer>点击「Rest」可让机器头立即回到静止姿态。矛盾横幅出现时，融合结果以语气为准。</footer>
+
+<script>
+"use strict";
+// 22 维顺序由后端 /api/state 的 status.head_names 给出，这里只是兜底
+let NAMES = ["LR","UD","TL","BL","TR","BR","LO","LI","RI","RO","JL","JR",
+             "LUL","LUR","LLL","LLR","CUL","CUR","CLL","CLR","TON","EXA"];
+const idx = n => NAMES.indexOf(n);
+const REST = {};
+
+const $ = id => document.getElementById(id);
+const COLORS = {face:"var(--m-face)", speech:"var(--m-speech)", text:"var(--m-text)"};
+const CN = {neutral:"平静", happy:"开心", sad:"难过", angry:"生气",
+            surprise:"惊讶", fear:"害怕", disgust:"厌恶", "—":"—"};
+const EXPR_CN = {neutral:"平静", happy:"开心", sad:"难过", angry:"生气",
+                 surprised:"惊讶", fear:"害怕", disgust:"厌恶",
+                 concerned:"关切", thinking:"思索", attentive:"注意"};
+
+let history = [];
+let lastCount = 0;
+let theme = null;
+
+function css(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+/* ---------------- face ---------------- */
+const faceCanvas = $("face"), fx = faceCanvas.getContext("2d");
+function drawFace(v){
+  const W = faceCanvas.width, H = faceCanvas.height;
+  fx.clearRect(0,0,W,H);
+  const cx = W/2, cy = H/2 + 6;
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
+  const accent = css("--accent");
+
+  // head
+  fx.fillStyle = css("--surface");
+  fx.strokeStyle = dark; fx.lineWidth = 5;
+  fx.beginPath(); fx.ellipse(cx, cy, 150, 175, 0, 0, Math.PI*2); fx.fill(); fx.stroke();
+
+  const lr  = v[idx("LR")] ?? .5, ud = v[idx("UD")] ?? .5;
+  const gx = (lr - .5) * 26, gy = (ud - .5) * 16;
+  const blink = [v[idx("TL")] ?? 1, v[idx("TR")] ?? 1, v[idx("BL")] ?? 1, v[idx("BR")] ?? 1];
+  const open = Math.min(...blink);              // 0 闭眼, 1 睁眼
+  const brow = ((v[idx("LO")] ?? .5) + (v[idx("LI")] ?? .5) +
+                (v[idx("RO")] ?? .5) + (v[idx("RI")] ?? .5)) / 4;
+
+  // eyes
+  const ex = 58, ey = -34;
+  for (const s of [-1, 1]) {
+    fx.save();
+    fx.beginPath(); fx.ellipse(cx + s*ex, cy + ey, 46, 40, 0, 0, Math.PI*2);
+    fx.fillStyle = "#fff"; fx.fill(); fx.strokeStyle = dark; fx.lineWidth = 3.5; fx.stroke();
+    fx.clip();
+    fx.fillStyle = accent;
+    fx.beginPath(); fx.arc(cx + s*ex + gx, cy + ey + gy, 17, 0, Math.PI*2); fx.fill();
+    fx.fillStyle = "#111";
+    fx.beginPath(); fx.arc(cx + s*ex + gx, cy + ey + gy, 7.5, 0, Math.PI*2); fx.fill();
+    fx.restore();
+    // eyelid: open=1 -> 眼皮在眼眶上方, open=0 -> 盖到底
+    const lidY = cy + ey - 42 + (1 - open) * 84;
+    fx.fillStyle = css("--surface");
+    fx.fillRect(cx + s*ex - 50, cy + ey - 50, 100, Math.max(0, lidY - (cy + ey - 50)));
+    fx.beginPath(); fx.moveTo(cx + s*ex - 48, lidY);
+    fx.quadraticCurveTo(cx + s*ex, lidY + 6, cx + s*ex + 48, lidY);
+    fx.strokeStyle = dark; fx.lineWidth = 3; fx.stroke();
+    // brow
+    const by = cy + ey - 62 - brow * 26;
+    fx.beginPath(); fx.moveTo(cx + s*ex - 40, by + 6);
+    fx.quadraticCurveTo(cx + s*ex, by - 8, cx + s*ex + 40, by + 4);
+    fx.strokeStyle = dark; fx.lineWidth = 7; fx.lineCap = "round"; fx.stroke();
+  }
+
+  // nose
+  fx.beginPath(); fx.moveTo(cx, cy + 4); fx.lineTo(cx - 9, cy + 44);
+  fx.lineTo(cx + 9, cy + 46);
+  fx.strokeStyle = dark; fx.lineWidth = 3.5; fx.lineCap = "round"; fx.stroke();
+
+  // mouth
+  const jaw = ((v[idx("JL")] ?? 0) + (v[idx("JR")] ?? 0)) / 2;
+  const smile = ((v[idx("CUL")] ?? .5) + (v[idx("CUR")] ?? .5)) / 2;
+  const wide  = ((v[idx("CLL")] ?? .5) + (v[idx("CLR")] ?? .5)) / 2;
+  const lip   = ((v[idx("LUL")] ?? .3) + (v[idx("LUR")] ?? .3) +
+                 (v[idx("LLL")] ?? .3) + (v[idx("LLR")] ?? .3)) / 4;
+  const mw = 46 + wide * 34, mh = 6 + jaw * 54;
+  const cornerY = cy + 92 - (smile - .5) * 34;
+  fx.beginPath();
+  fx.moveTo(cx - mw, cornerY);
+  fx.quadraticCurveTo(cx, cornerY + mh * 2 - (smile-.5)*20, cx + mw, cornerY);
+  fx.quadraticCurveTo(cx, cornerY + mh * 2 + lip*10 + 6, cx - mw, cornerY);
+  fx.closePath();
+  fx.fillStyle = jaw > .12 ? "#7a2a2a" : "transparent";
+  if (jaw > .12) fx.fill();
+  fx.strokeStyle = dark; fx.lineWidth = 4; fx.stroke();
+  if (jaw > .3) { // teeth
+    fx.fillStyle = "#f3f3f3";
+    fx.fillRect(cx - mw*.7, cornerY + 4, mw*1.4, Math.min(14, mh*.5));
+    // tongue
+    if ((v[idx("TON")] ?? 0) > .3) {
+      fx.fillStyle = "#c05050";
+      fx.beginPath(); fx.ellipse(cx, cornerY + mh*1.5, mw*.5, mh*.35, 0, 0, Math.PI*2); fx.fill();
+    }
+  }
+}
+
+/* ---------------- bars ---------------- */
+function topOf(probs){ let best="—", p=0; for (const [k,v] of Object.entries(probs||{})) if (v>p){p=v;best=k;} return [best,p]; }
+
+function renderBars(rec){
+  const box = $("bars");
+  const mods = [["face","人脸"],["speech","语音"],["text","文本"]];
+  let html = "";
+  for (const [k, cn] of mods){
+    const m = rec?.per_modality?.[k];
+    if (!m){ html += `<div class="barrow"><div class="top"><span class="name"><span class="swatch" style="background:${COLORS[k]}"></span>${cn}</span>
+      <span class="prob">缺失</span></div><div class="track"></div>
+      <div class="detail">这一路没有数据，融合时权重为 0</div></div>`; continue; }
+    const [label, p] = m.label ? [m.label, m.probs?.[m.label] ?? m.confidence] : topOf(m.probs);
+    html += `<div class="barrow">
+      <div class="top"><span class="name"><span class="swatch" style="background:${COLORS[k]}"></span>${cn}</span>
+        <span class="prob">${CN[label]||label} ${(p*100).toFixed(0)}%</span></div>
+      <div class="track"><div class="fill" style="width:${Math.max(2,p*100)}%;background:${COLORS[k]}"></div></div>
+      <div class="detail">置信度 ${((m.confidence??p)*100).toFixed(0)}%</div></div>`;
+  }
+  box.innerHTML = html;
+}
+
+/* ---------------- timeline ---------------- */
+const tl = $("timeline"), tctx = tl.getContext("2d");
+function drawTimeline(){
+  const W = tl.width, H = tl.height, pad = 34, right = 10;
+  const now = Date.now()/1000, span = 60;
+  tctx.clearRect(0,0,W,H);
+  const muted = css("--muted"), border = css("--border");
+  tctx.font = "12px 'Segoe UI',sans-serif"; tctx.fillStyle = muted;
+  const lanes = [["face",0],["speech",1],["text",2]];
+  const laneH = 30, top = 22;
+  for (const [k,i] of lanes){
+    const y = top + i*laneH;
+    tctx.fillStyle = muted; tctx.textAlign = "right";
+    tctx.fillText({face:"人脸",speech:"语音",text:"文本"}[k], pad-8, y+laneH/2+4);
+    tctx.strokeStyle = border; tctx.lineWidth = 1;
+    tctx.beginPath(); tctx.moveTo(pad, y+laneH/2); tctx.lineTo(W-right, y+laneH/2); tctx.stroke();
+  }
+  const fusedY = top + 3*laneH + 8;
+  tctx.fillStyle = muted; tctx.textAlign = "right"; tctx.fillText("融合", pad-8, fusedY+15);
+  tctx.strokeStyle = border; tctx.beginPath();
+  tctx.moveTo(pad, fusedY+15); tctx.lineTo(W-right, fusedY+15); tctx.stroke();
+
+  const xOf = t => pad + (1 - (now - t)/span) * (W - pad - right);
+  history.forEach((h,i) => {
+    const x = xOf(h.t);
+    if (x < pad || x > W-right) return;
+    for (const [k,lane] of lanes){
+      const m = h.per_modality?.[k]; if (!m) continue;
+      const [lab,p] = topOf(m.probs);
+      const y = top + lane*laneH + laneH/2;
+      const hgt = Math.max(2, (m.confidence ?? p) * (laneH-8));
+      tctx.fillStyle = css(`--m-${k}`);
+      tctx.globalAlpha = .85;
+      tctx.fillRect(x-1.5, y-hgt/2, 3, hgt);
+      tctx.globalAlpha = 1;
+      if (i === history.length-1){
+        tctx.fillStyle = css(`--m-${k}`); tctx.textAlign = "left";
+        tctx.fillText(CN[lab]||lab, Math.min(x+5, W-right-30), y-9);
+      }
+    }
+    // fused label band
+    const f = h.fusion;
+    if (f){
+      const nx = history[i+1] ? xOf(history[i+1].t) : W-right;
+      const w = Math.max(2, nx - x);
+      tctx.fillStyle = f.conflict ? css("--crit") : css("--accent");
+      tctx.globalAlpha = .18 + .3*(f.confidence ?? 0);
+      tctx.fillRect(x, fusedY, w, 20);
+      tctx.globalAlpha = 1;
+      if (w > 42){
+        tctx.fillStyle = css("--text"); tctx.textAlign = "left";
+        tctx.fillText(CN[f.label]||f.label, x+4, fusedY+15);
+      }
+      if (f.conflict){
+        tctx.fillStyle = css("--crit");
+        tctx.beginPath(); tctx.moveTo(x, fusedY-6); tctx.lineTo(x+9, fusedY-6); tctx.lineTo(x+4.5, fusedY-14); tctx.fill();
+      }
+    }
+  });
+  tctx.strokeStyle = border; tctx.textAlign="center"; tctx.fillStyle=muted;
+  for (let s=0; s<=60; s+=15){
+    const x = pad + (1 - s/span) * (W-pad-right);
+    tctx.beginPath(); tctx.moveTo(x, H-18); tctx.lineTo(x, 16); tctx.stroke();
+    tctx.fillText(s===0 ? "现在" : `-${s}s`, x, H-4);
+  }
+}
+
+/* ---------------- V/A ---------------- */
+const va = $("va"), vactx = va.getContext("2d");
+function drawVA(){
+  const W = va.width, H = va.height, pad = 26;
+  vactx.clearRect(0,0,W,H);
+  const border = css("--border"), muted = css("--muted");
+  const X = v => pad + (v+1)/2*(W-pad-10), Y = a => H-pad - (a+1)/2*(H-pad-10);
+  vactx.strokeStyle = border; vactx.lineWidth = 1;
+  for (const v of [-1,-.5,0,.5,1]){
+    vactx.beginPath(); vactx.moveTo(X(v), Y(-1)); vactx.lineTo(X(v), Y(1)); vactx.stroke();
+    vactx.beginPath(); vactx.moveTo(X(-1), Y(v)); vactx.lineTo(X(1), Y(v)); vactx.stroke();
+  }
+  vactx.fillStyle = muted; vactx.font = "11px 'Segoe UI',sans-serif";
+  vactx.textAlign="center"; vactx.fillText("效价 →", W/2, H-6);
+  vactx.save(); vactx.translate(11,H/2); vactx.rotate(-Math.PI/2); vactx.fillText("唤醒 ↑",0,0); vactx.restore();
+
+  const pts = history.filter(h=>h.fusion && h.fusion.valence != null);
+  for (let i=1;i<pts.length;i++){
+    vactx.strokeStyle = css("--accent"); vactx.globalAlpha = .25 + .5*i/pts.length;
+    vactx.lineWidth = 2; vactx.beginPath();
+    vactx.moveTo(X(pts[i-1].fusion.valence), Y(pts[i-1].fusion.arousal));
+    vactx.lineTo(X(pts[i].fusion.valence), Y(pts[i].fusion.arousal)); vactx.stroke();
+  }
+  vactx.globalAlpha = 1;
+  const last = pts[pts.length-1];
+  if (last){
+    vactx.fillStyle = last.fusion.conflict ? css("--crit") : css("--accent");
+    vactx.beginPath(); vactx.arc(X(last.fusion.valence), Y(last.fusion.arousal), 6, 0, Math.PI*2); vactx.fill();
+    vactx.strokeStyle = css("--surface"); vactx.lineWidth = 2; vactx.stroke();
+  }
+}
+
+/* ---------------- table ---------------- */
+function renderTable(){
+  const rows = history.slice(-10).reverse().map(h=>{
+    const fm = h.per_modality||{};
+    const cell = m => m ? `${CN[m.label]||m.label} ${((m.confidence??0)*100).toFixed(0)}%` : "—";
+    const d = new Date(h.t*1000);
+    const hh = String(d.getHours()).padStart(2,"0"), mm = String(d.getMinutes()).padStart(2,"0"),
+          ss = String(d.getSeconds()).padStart(2,"0");
+    return `<tr><td class="num">${hh}:${mm}:${ss}</td>
+      <td title="${(h.asr_text||"").replace(/"/g,"&quot;")}">${(h.asr_text||"—").slice(0,18)}</td>
+      <td>${cell(fm.face)}</td><td>${cell(fm.speech)}</td><td>${cell(fm.text)}</td>
+      <td><b>${CN[h.fusion?.label]||h.fusion?.label||"—"}</b> ${((h.fusion?.confidence??0)*100).toFixed(0)}%</td>
+      <td>${h.fusion?.conflict ? '<span class="tag crit">矛盾</span>' : "—"}</td>
+      <td>${EXPR_CN[h.expression?.name]||h.expression?.name||"—"}</td>
+      <td class="num">${Math.round(h.latency_ms||0)} ms</td></tr>`;
+  }).join("");
+  $("tbody").innerHTML = rows || `<tr><td colspan="9" class="empty">还没有事件</td></tr>`;
+}
+
+/* ---------------- main render ---------------- */
+function render(state){
+  const now = state.now, hist = state.history || [];
+  history = hist;
+  if (Array.isArray(now.status?.head_names) && now.status.head_names.length) NAMES = now.status.head_names;
+  const rec = hist[hist.length-1] || now;
+  const f = rec.fusion;
+
+  // KPIs
+  $("kLat").innerHTML = `${Math.round(rec.latency_ms||0)}<small> ms</small>`;
+  $("kConf").textContent = f ? `${(f.confidence*100).toFixed(0)}%` : "–";
+  $("kCov").innerHTML = f ? `${3 - (f.missing?.length||0)}<small>/3</small>` : "–";
+  $("kExp").textContent = EXPR_CN[rec.expression?.name] || rec.expression?.name || "–";
+  $("kCount").textContent = hist.length;
+  $("kGate").textContent = now.speaking ? "说话中" : "收音";
+
+  // banner
+  const b = $("banner");
+  if (f?.conflict){
+    const parts = Object.entries(rec.per_modality||{}).map(([k,m])=>`${ {face:"脸",speech:"语气",text:"字面"}[k]||k } ${CN[m.label]||m.label}`);
+    b.className = "banner show warn";
+    b.innerHTML = `<span>⚠</span><span>矛盾：${parts.join(" / ")} → 以语气为准</span>`;
+  } else b.className = "banner";
+
+  // hero
+  $("fusedLabel").textContent = f ? (CN[f.label]||f.label) : "–";
+  $("fusedConf").textContent = f ? `置信度 ${(f.confidence*100).toFixed(0)}%` : "";
+  $("asr").textContent = rec.asr_text || "";
+  $("why").textContent = rec.expression?.reason || "";
+
+  renderBars(rec);
+  drawTimeline();
+  renderTable();
+  drawFace(now.head || []);
+  drawVA();
+
+  if (now.status && now.status.device){
+    $("status").textContent = `${now.status.device} · ${now.status.head||""} · ${now.status.tts||""}`;
+  }
+  $("cam").style.display = now.status?.camera ? "block" : "none";
+  if (!$("cam").src && now.status?.camera) $("cam").src = "/api/video.mjpg";
+}
+
+/* ---------------- polling ---------------- */
+let failures = 0;
+async function poll(){
+  try{
+    const r = await fetch("/api/state", {cache:"no-store"});
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+    failures = 0; $("conn").className = "dot";
+  }catch(e){
+    failures++; if (failures > 2) $("conn").className = "dot off";
+    $("status").textContent = "连接断开，重试中…";
+  }
+  setTimeout(poll, 250);
+}
+poll();
+
+/* ---------------- controls ---------------- */
+async function post(path, body){
+  await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"},
+                     body: JSON.stringify(body||{})}).catch(()=>{});
+}
+$("restBtn").onclick = () => post("/api/rest");
+$("sayBtn").onclick = () => { const t=$("sayBox").value.trim(); if(t){ post("/api/say",{text:t}); $("sayBox").value=""; } };
+$("sayBox").addEventListener("keydown", e => { if(e.key==="Enter") $("sayBtn").click(); });
+$("expSel").onchange = e => { if(e.target.value){ post("/api/expression",{name:e.target.value}); e.target.value=""; } };
+$("themeBtn").onclick = () => {
+  const root = document.documentElement;
+  const dark = root.getAttribute("data-theme") === "dark"
+    || (!root.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+  root.setAttribute("data-theme", dark ? "light" : "dark");
+};
+window.addEventListener("resize", () => { if (history.length) { drawTimeline(); drawVA(); } });
+</script>
+</body>
+</html>
