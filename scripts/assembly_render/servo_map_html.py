@@ -225,7 +225,7 @@ ACTION = [('LR', '<code>LR=110</code>', '上一节的 LR 测试，看结果选�
           ('BL', '<code>BL=80</code>', '下眼皮睁开'), ('BR', '<code>BR=100</code>', '下眼皮睁开'),
           ('LO', '<code>LO=95</code>', '外侧眉毛抬起'), ('RO', '<code>RO=85</code>', '外侧眉毛抬起'),
           ('LI', '<code>LI=85</code>', '内侧眉毛抬起'), ('RI', '<code>RI=95</code>', '内侧眉毛抬起'),
-          ('JL', '<code>JL=85</code>', '下巴张开（JR 先不接）'), ('JR', '<code>JR=95</code>', '下巴张开（JL 拔掉再试）'),
+          ('JL', '<code>JL</code>，再 <code>JL=85</code>', '下巴张开（JR 松开）'), ('JR', '<code>JR</code>，再 <code>JR=95</code>', '下巴张开（JL 松开）'),
           ('LUL', '<code>LUL=85</code>', '上唇这一半抬起'), ('LUR', '<code>LUR=95</code>', '上唇这一半抬起'),
           ('LLL', '<code>LLL=95</code>', '下唇这一半往下'), ('LLR', '<code>LLR=85</code>', '下唇这一半往下'),
           ('CUL', '<code>CUL=85</code>', '嘴角上抬'), ('CUR', '<code>CUR=95</code>', '嘴角上抬'),
@@ -297,7 +297,7 @@ def page():
              '断电，XH 插到板子上，转接头 + 到 H1 第 2 脚 <b>响</b>，转接头 − 到 H1 第 3 脚 <b>响</b>（眼板、眉板）。都不响多半是 XH 线反了']
     power = ['眼板、眉板：排针 + 和 − 是 <b>4.7–4.9 V</b>，H1 第 2、3 脚约 <b>5.0 V</b>', '嘴部板：U3 的 + 和 − 是 <b>4.7–4.9 V</b>。接近 0 或为负值就马上断电，查 XT60 红黑',
              '嘴部板：BOARD POWER 输出是 <b>3.5–4 V</b>，偏低是正常的。插上跳线帽后，U10 的 VSYS 读数相同']
-    sw = ['眼睛板 SW1 第 1、2 脚<b>导通 = 正常运行</b>，不通 = 校准。用记号笔在板上标出两个档位（要插着 Pico 才能接地，量通断时不插）',
+    sw = ['眼睛板 SW1 第 1、2 脚<b>导通 = 正常运行</b>，不通 = 校准。拨到校准档的那一下，全部舵机会通电到 90°。用记号笔标出档位（量通断时不插 Pico）',
           '嘴部板 SW1 第 1、2 脚<b>导通 = 校准</b>，不通 = 正常运行，和眼睛板<b>相反</b>。也标出来']
     act = ''.join(f'<tr><td>{ck("a" + n, "<b>" + n + "</b>")}</td><td>{c}</td><td>{w}</td></tr>' for n, c, w in ACTION)
     html = f"""<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>舵机接线与上电检查</title><style>{CSS}</style></head><body><main>
@@ -305,7 +305,7 @@ def page():
 <p class="sub">Robot Head α2.0.33 · 2026-11-05 · 文中的左手边、右手边都是<b>你面对机器人的脸</b>时的方向。复选框的进度只存在这个浏览器里。</p>
 <nav><a href="#fix">已改了什么</a><a href="#map">舵机在哪</a><a href="#ports">插哪个口</a><a href="#meter">万用表</a><a href="#first">第一次接舵机</a><a href="#act">动作核对</a><a href="#how">不对怎么改</a><a href="#care">注意事项</a></nav>
 
-<div class="bad"><b>眼睛板不能在运行档上电。</b>固件启动时会把眼皮转到全睁（TL 到 160°）。插反时眼皮会朝反方向猛转 70°，可能打坏舵盘和连杆。第一次一定按<a href="#first">这里的顺序</a>来。</div>
+<div class="bad"><b>眼皮不要一上来就跑表情。</b>全部通电后眼皮会转到全睁（TL 到 160°）。插反时会朝反方向猛转 70°，可能打坏舵盘和连杆。第一次一定按<a href="#first">这里的顺序</a>一个一个来。</div>
 
 <h2 id="fix">已经改了什么</h2>
 {table(['问题', '改动', '你要做什么'], [
@@ -346,24 +346,26 @@ def page():
 <h3>⑤ 第一次给板子通电（一次一块，不插 Pico，不接舵机）</h3><p>有可调电源就设 5.0 V、限流 0.3 A，电流顶到限流就马上关。</p>{checks('p', power)}
 
 <h2 id="first">第一次接舵机</h2>
+<div class="note">固件开机时<b>所有舵机都不发信号</b>，接上 5V 也不会动，选到谁才通电谁。舵机线可以全部插着。眼睛板和嘴部板要刷 2026-11-06 之后的固件。</div>
 <ol>
-<li>眼睛板、嘴部板的开关拨到<b>校准档</b>，插好 Pico。这时舵机全部保持 90°。</li>
-<li><b>先接 5V，再插 USB。</b>断电时先拔 USB。眼板、眉板只插 USB 时，电会从 Pico 倒灌到舵机那一路，电脑 USB 带不动。</li>
-<li>眼睛板只接 LR。开关拨回<b>运行档</b>，舵机继续停在 90°。运行：
+<li>确认已经刷了新固件。<b>先接 5V，再插 USB。</b>断电时先拔 USB。眼板、眉板只插 USB 时，电会从 Pico 倒灌到舵机那一路，电脑 USB 带不动。</li>
+<li>运行工具，先做 LR 测试：
 <pre><code>cd /Volumes/Robotics/projects/head
 .venv/bin/python scripts/servo_step.py
+&gt; LR
+&gt; LR=100
 &gt; LR=110</code></pre>
 面对机器人看眼球往哪边转，到<a href="#map">这里</a>选结果。转完发 <code>LR=90</code>。</li>
-<li>其余舵机<b>一次接一个</b>，断电插线。上电时开关同样先在校准档，再拨回运行档。</li>
-<li>照下面的动作表走 5–10° 小步。听到嗡嗡响就马上输入 <code>X</code> 卸力。</li>
-<li>全部通过后，才能在运行档上电或发 <code>R</code>。最后用 <code>.venv/bin/python scripts/servo_check.py</code> 全部扫一遍。</li>
+<li>输入 <code>walk</code>，每个舵机单独通电到 90°，回车换下一个。一直响就发 <code>X</code>，记下名字。</li>
+<li>输入名字（比如 <code>TL</code>）只让它通电，再照下面的动作表走 5–10° 小步。听到嗡嗡响就马上输入 <code>X</code> 卸力。</li>
+<li>全部通过后，才能发 <code>!C</code> 或跑表情。最后用 <code>.venv/bin/python scripts/servo_check.py</code> 全部扫一遍。</li>
 </ol>
-<div class="note">眉毛板没有校准开关，上电直接转到 rest，只离 90° 约 10°，问题不大，也是一次接一个。</div>
+<div class="note">第一次通电时舵机会全速转到 90°，因为固件不知道它原来在哪。校准开关只有拨过去的那一下才会让全部舵机通电，测试时别拨它。</div>
 
 <h2 id="act">动作核对表</h2>
 <p>这张表<b>不受 LR 测试结果影响</b>，最终以它为准。舵机从 90° 开始。</p>
 <div class="tw"><table><thead><tr><th>舵机</th><th>输入</th><th>应该看到</th></tr></thead><tbody>{act}</tbody></table></div>
-<p class="sub">JL、JR 通过后再两个一起接，用 <code>JL=85</code> 和 <code>JR=95</code> 紧接着发，看下巴不别劲。</p>
+<p class="sub">JL、JR 通过后再一起试：<code>JL JR</code>，然后 <code>JL=85 JR=95</code>，看下巴不别劲。</p>
 
 <h2 id="how">不对怎么改</h2>
 {table(['现象', '怎么改', '要不要重刷'], [
@@ -385,8 +387,9 @@ PATH=$PWD/.venv/bin:$PATH firmware/flash.sh eyes
 <li><b>绝对不要接 12V。</b>眼眉板上有 12V 字样，但舵机直接接在电源上，会烧。</li>
 <li>Pico 插反、XH 反接都能烧板。上电前再看一次 USB 朝向：USB 朝 H1 第 1 脚那一端，嘴部板插里侧两排。</li>
 <li>嘴部板 BOARD POWER 要插跳线帽，否则 Pico 没有电。</li>
-<li>插拔舵机都要先断电。</li>
-<li>JL、JR 是硬连在同一个下巴上的。第一次只接一个，确认方向后再接另一个，否则两个舵机会对顶，大电流还可能打坏 JawLink。</li>
+<li>插拔舵机都要先断电。USB 插着时 Pico 一直在运行。</li>
+<li>JL、JR 是硬连在同一个下巴上的。第一次只给一个通电，确认方向后再一起转，否则两个舵机会对顶，大电流还可能打坏 JawLink。</li>
+<li>同一侧嘴角的两个舵机（CUR 和 CLR、CUL 和 CLL）也连在一起。一个到不了 90° 时，试试这一对一起通电。</li>
 <li>EXA 不接。眉毛板 4、5 列空着。</li>
 <li>舵机线先别扎死，全部通过后再走线，转到两端看线有没有被连杆夹住。</li>
 <li>整机跑起来后摸 DC 插头和端子，发烫就停。后盖封死以后再测一次温度。</li>

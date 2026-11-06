@@ -101,12 +101,15 @@ def test_servo_step_guard():
             sent.append(line)
             return "OK"
 
-    m.run(C(), ["TL=100", "TL=160", "!TL=160", "UD=95", "TL=1 JL=85", "q"], out=lambda *a: None)
-    assert sent == ["V 30", "S TL=100", "S TL=160", "S UD=95"]
+    m.run(C(), ["TL=100", "TL=160", "!TL=160", "UD=95", "TL=1 JL=85", "C", "q"], out=lambda *a: None)
+    assert sent == ["V 30", "S TL=100", "S TL=160", "S UD=95"]  # 单写 C 不算命令，要 !C
     sent.clear()
     C.links = {"mouth": None}
     m.run(C(), ["JL=85 JR=95", "JL=50 JR=130", "q"], out=lambda *a: None)
     assert sent == ["V 30", "S JL=85 JR=95"]
+    sent.clear()
+    m.run(C(), ["CUR", "JL JR", "walk", "", "X", "", "q"], out=lambda *a: None)
+    assert sent[:5] == ["V 30", "O CUR", "O JL JR", "O JL", "O JR"] and sent[5:] == ["X"]
 
 
 def test_servo_check_moves_jaw_together():
@@ -159,3 +162,54 @@ def test_pico_ports_skip_other_serial(monkeypatch):
     found = {"/dev/cu.usbmodem*": [], "/dev/serial/by-id/*MicroPython*": ["/dev/serial/by-id/usb-MicroPython_Board-if00"]}
     monkeypatch.setattr(client.glob, "glob", lambda p: found[p])
     assert client.pico_ports() == ["/dev/serial/by-id/usb-MicroPython_Board-if00"]
+
+
+class Spy:
+    def __init__(self):
+        self.writes, self.offs = [], 0
+
+    def write(self, d):
+        self.writes.append(d)
+
+    def off(self):
+        self.offs += 1
+
+
+def spied_fw():
+    m = load_fw("mouth")
+    m.servos.update({n: Spy() for n in m.servos})
+    return m
+
+
+def test_boot_sends_no_signal():
+    m = spied_fw()
+    for _ in range(50):
+        m.tick(0.01)
+    assert not m.active and all(not s.writes for s in m.servos.values())
+
+
+def test_only_one_servo_powered():
+    m = spied_fw()
+    assert m.handle("O CUR") == "OK" and m.active == {"CUR"}
+    assert m.servos["CUR"].writes == [90] and not m.servos["CLR"].writes
+    m.handle("O JL JR")
+    assert m.active == {"JL", "JR"} and m.servos["CUR"].offs == 1
+    m.handle("S TON=100")
+    assert m.active == {"JL", "JR", "TON"}
+    assert m.handle("O NOPE").startswith("ERR") and m.active == {"JL", "JR", "TON"}
+    m.handle("X")
+    assert not m.active
+
+
+def test_cal_switch_only_on_edge():
+    m = spied_fw()
+    state = {"v": 0}
+    m.cal_pin = types.SimpleNamespace(value=lambda: state["v"])
+    m.last_cal = m.cal_switch_on()  # 开机就在校准档
+    m.poll_cal()
+    assert not m.active
+    state["v"] = 1
+    m.poll_cal()
+    state["v"] = 0
+    m.poll_cal()
+    assert len(m.active) == len(m.servos)

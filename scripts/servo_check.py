@@ -5,7 +5,7 @@
   .venv/bin/python scripts/servo_check.py --center        # 全部转到 90° 并保持，装舵盘时用
 
 测试时舵机离 90° 最多 ±SWING 度，且固件会按 config 的范围截断，所以装好连杆后也能用。
-退出后舵机继续保持 90°（Pico 没断电）。眼部板的校准开关要拨到运行档，否则 S 命令不起作用。
+一次只给一个舵机通电，JL 和 JR 例外，两个一起转。结束后全部卸力。
 """
 import argparse
 import json
@@ -38,7 +38,6 @@ def check(client, boards, only=None, ask=input):
     result = {}
     for board in boards:
         client._send(board, f"V {SPEED}")
-        client._send(board, "C")
         for name in names_of(client, board):
             if only and name != only:
                 continue
@@ -47,12 +46,13 @@ def check(client, boards, only=None, ask=input):
                 continue
             while True:
                 ask(f"[{board}] {name}：看着这个舵机，回车开始转动 ")
+                client._send(board, "O JL JR" if name == "JL" else f"O {name}")
                 sweep(client, board, name)
                 a = ask("  正常 y / 不动或异响 n / 再转一遍 r：").strip().lower()
                 if a != "r":
                     result[name] = "ok" if a == "y" else "bad"
                     break
-        client._send(board, "C")
+        client._send(board, "X")
     return result
 
 
@@ -78,7 +78,7 @@ def main():
     old.update(res)
     out.write_text(json.dumps(old, ensure_ascii=False, indent=1))
     bad = [k for k, v in res.items() if v != "ok"]
-    print("测试", len(res), "个，有问题:", bad or "无", "；已回到 90°，结果在", out)
+    print("测试", len(res), "个，有问题:", bad or "无", "；已全部卸力，结果在", out)
 
 
 if __name__ == "__main__":
