@@ -28,7 +28,9 @@ def names_of(client, board):
 
 def sweep(client, board, name):
     for deg in (90, 90 + SWING, 90 - SWING, 90):
-        client._send(board, f"S {name}={deg}")
+        # 下巴两个舵机硬连在一起，只能镜像同时转，单独转一个会对顶
+        extra = f" JR={180 - deg}" if name == "JL" else ""
+        client._send(board, f"S {name}={deg}{extra}")
         time.sleep(SWING / SPEED + 0.3)
 
 
@@ -39,6 +41,9 @@ def check(client, boards, only=None, ask=input):
         client._send(board, "C")
         for name in names_of(client, board):
             if only and name != only:
+                continue
+            if name == "JR":
+                print("JR 和 JL 一起测，跳过")
                 continue
             while True:
                 ask(f"[{board}] {name}：看着这个舵机，回车开始转动 ")

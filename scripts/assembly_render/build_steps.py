@@ -17,6 +17,8 @@ import lip_link_fig  # noqa: E402
 import link_id_fig  # noqa: E402
 import s3_chain_fig  # noqa: E402
 import brow_fig  # noqa: E402
+import final_fig  # noqa: E402
+import json, re  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 S = Scene(os.path.join(ROOT, 'outputs/assembly/mesh.npz'))
@@ -109,6 +111,8 @@ def figure(step):
         T = S.tris(g); items.append((T, col, g)); fit.append(S.pts(g))
     for g in step.get('context', []):
         items.append((S.tris(g), C_CTX, g))
+    for i, (T, col) in enumerate(step.get('extra', [])):
+        items.append((T, col, 900 + i)); fit.append(T.reshape(-1, 3))
     labels = []
     for s in step['screws']:
         h, t, a, hr = S.screw_axis(s)
@@ -222,7 +226,7 @@ jb_ins = [(p, sp) for p, sp, _ in insert_points(113, M2_JAW + M4x8_JAW + [115, 1
 STEPS.append(dict(
     key='ins_jaw', title='热熔螺母 ② 下颌座 JawBase', parts=[(113, C_RECV)], screws=[], letters={},
     inserts=jb_ins, dir=(0.6, 0.5, 0.62), size=(1000, 700),
-    text='下颌座：3 个 MG90S（下唇、下嘴角）装在这里，下颌连杆也拧在这里。',
+    text='下颌座：3 个 MG90S（两侧是下唇 LLL / LLR，中间是舌头 TON）装在这里，下颌连杆也拧在这里。',
     table=[('M2', 'Ø3.2', 6, '3 个 MG90S 的安装耳'), ('M4', 'Ø5.35', 6, '4 个下颌连杆（M4×8）、2 个台阶螺丝转轴。另有第 7 个 M4 孔（图上没标，在下颌前部，Part_19 旁边），推测是舌头连杆转轴，不装舌头可以不压')],
 ))
 ck_ins = [(p, sp) for p, sp, _ in insert_points(27, M3x8_CHEEK)]
@@ -372,7 +376,7 @@ def lab(g, txt, dz=0.0, dy=0.0):
     return (P[np.argmin(np.linalg.norm(P - c, axis=1))] + np.array([0, dy, dz]), txt)
 
 
-SV = {52: 'TL 舵机', 40: 'BL 舵机', 43: 'TR 舵机', 51: 'BR 舵机', 61: 'UD 舵机', 35: 'LR 舵机'}
+SV = {43: 'TL 舵机', 51: 'BL 舵机', 52: 'TR 舵机', 40: 'BR 舵机', 61: 'UD 舵机', 35: 'LR 舵机'}
 STEPS.append(dict(
     key='eye1', title='眼部 ① 底板 + 舵机座 + 5 个舵机（卡进去，不用螺丝）',
     parts=[(44, C_HOLD), (45, C_BASE), (59, C_BASE), (34, C_BASE)] + [(g, C_SERVO) for g in EYE_S1],
@@ -399,8 +403,8 @@ STEPS.append(dict(
     key='eye3', title='眼部 ③ 舵盘和连杆（先回中再装）',
     parts=[(g, C_HORN) for g in [28, 29, 30, 31, 54, 47]] + [(g, C_LEV) for g in [56, 57, 60, 32, 42]],
     context=EYE_L1 + EYE_S1 + EYE_L2 + EYE_S2, screws=[], letters={}, dir=(-0.75, 0.45, -0.5), size=(1000, 760),
-    notes_on_fig=[lab(30, 'TopLidHorn → TL', dz=10), lab(28, 'TopLidHorn → BL', dz=-10), lab(31, 'TopLidHorn → TR', dz=10),
-                  lab(29, 'TopLidHorn → BR', dz=-10), lab(54, 'CentralServoHorn → LR', dz=10), lab(47, 'VerticalHorn → UD', dz=10),
+    notes_on_fig=[lab(30, 'TopLidHorn → TR', dz=10), lab(28, 'TopLidHorn → BR', dz=-10), lab(31, 'TopLidHorn → TL', dz=10),
+                  lab(29, 'TopLidHorn → BL', dz=-10), lab(54, 'CentralServoHorn → LR', dz=10), lab(47, 'VerticalHorn → UD', dz=10),
                   lab(56, 'VerticalLever', dz=8), lab(57, 'TopLidLever', dz=8), lab(60, 'TopLidLever', dz=8),
                   lab(32, 'BottomLidLever', dz=-8), lab(42, 'BottomLidLever', dz=-8)],
     text='橙色 = 打印的舵盘，直接压到舵机输出轴的花键上（4 个 TopLidHorn、1 个 CentralServoHorn、1 个 VerticalHorn）；紫色 = 连杆，一头卡在舵盘上，一头卡在眼皮或眼球支架上。'
@@ -421,13 +425,110 @@ STEPS.append(dict(
     rows=[],
 ))
 
+# ---------- 重排：按真实装配顺序，模型没画的连接用 final_fig 补 ----------
+BY = {s['key']: s for s in STEPS}
+BASE_EYE = [44]
+XA, XB = final_fig.pivot_a(), final_fig.lateral_frame()
+RA = final_fig.right_adaptors(S)
+GRAY = lambda *ts: [(t, C_PREV) for t in ts]
+XMID = lambda T: T.reshape(-1, 3).mean(0)
+s = BY['eye2']
+s.update(key='eye_base', title='眼部 ② 眼球核心卡进底板', parts=[(44, C_PREV)] + [(g, C_BASE) for g in [33, 49]] + [(39, C_HOLD), (35, C_SERVO)], context=[],
+         extra=[(XA, C_LEV), (XB, C_HORN)],
+         notes_on_fig=[lab(33, 'Base_v2'), lab(49, 'Base_v2'), lab(39, 'Y 轴支架', dz=14), lab(35, 'LR 舵机', dz=-12), ((-30, -62, -14), 'X 轴件 A'), ((30, -44, 12), 'X 轴件 B（LateralFrame）')],
+         text='把上一步的眼球核心从<b>底板下面</b>往上卡，两个 Base_v2 的卡脚扣进底板。灰色是底板。紫色是 X 轴件 A，橙色是 X 轴件 B，这时 B 还是松放的。')
+s = BY['eye4']
+s.update(key='eye_lid', title='眼部 ③ 眼球 + 眼皮 + 外侧枢轴座',
+         parts=[(41, C_HOLD), (62, C_HOLD), (46, C_BALL), (53, C_BALL), (36, C_BASE), (37, C_BASE)] + [(g, C_LID) for g in [38, 48, 50, 58]],
+         context=BASE_EYE + [33, 49, 39, 35], extra=[(RA[0], C_HOLD), (RA[1], C_HOLD)] + GRAY(XA, XB),
+         text='每只眼球背面装一个 EyeAdaptor（上）和一个 EyeAdaptor_v2（下）。X 轴件 A 两端的销钉插进下面 EyeAdaptor_v2 的 Ø7 孔，这是眼球左右转的轴。眼皮先上下对齐，再一起插进中间枢轴：可以稍微掰一下机构，或者把眼球转到左右两边再插。'
+              '最后把外侧的 Base 从底板下面卡上，眼皮就固定了。'
+              '注意 STL 名字和位置对不上：<b>名字叫 LidBR 的其实装在上面，LidTR / LidTR_v2 装在下面</b>。模型只画了左眼的 EyeAdaptor，图里右眼是镜像补上的。')
+s = BY['eye1']
+s.update(key='eye_servo', title='眼部 ④ 其余 5 个舵机 + 压扣', context=BASE_EYE + [33, 49, 36, 37, 39, 35, 41, 62, 46, 53, 38, 48, 50, 58],
+         parts=[(45, C_BASE), (59, C_BASE), (34, C_BASE)] + [(g, C_SERVO) for g in EYE_S1], extra=GRAY(XA, XB, *RA),
+         notes_on_fig=[lab(45, 'SnapEyemech_v20_v2 压扣', dz=22), lab(59, 'SnapEyemech_v20_v2 压扣', dz=22), lab(34, 'SnapEyemech_v20_v3 压扣', dz=20)] + [lab(g, SV[g], dz=-2) for g in EYE_S1],
+         text='图是从<b>后上方</b>看（眼睛朝下方）。先把 5 个舵机放到底板上，再把绿色压扣从上面扣下去压住：两个 SnapEyemech_v20_v2 各压 2 个眼皮舵机，SnapEyemech_v20_v3 压 UD 舵机。'
+              '<b>不用螺丝、不用热熔螺母</b>。卡得太紧别硬压，用锉刀稍微修一下；太松就垫一层胶带。')
+EYE_PRE = BASE_EYE + [33, 49, 36, 37, 45, 59, 34, 40, 43, 51, 52, 41, 62, 46, 53, 38, 48, 50, 58]
+STEPS.append(dict(key='eye_lr', title='眼部 ⑤ 左右控制：LR 舵机 → 两只眼球', parts=[(35, C_SERVO), (54, C_HORN), (39, C_HOLD)], context=EYE_PRE + [61], extra=[(XB, C_LEV)] + GRAY(XA, *RA),
+                  screws=[], letters={}, dir=(-0.45, 0.8, -0.5), size=(1000, 760),
+                  notes_on_fig=[lab(54, 'CentralServoHorn', dz=8), lab(35, 'LR 舵机', dz=-12), lab(39, 'Y 轴支架', dz=14), ((22, -40, 13), 'LateralFrame')],
+                  text='这一步让两只眼球一起左右转。传动路线：<b>LR 舵机 → CentralServoHorn 后端 → LateralFrame → 两只 EyeAdaptor 的尾部 → 两只眼球</b>。三个环中心距 37.5 mm，和 EyeAdaptor 尾部到转轴的臂长一样，所以舵盘一转，LateralFrame 横着平移，两只眼同步转。'
+                       '<ol><li>取下图 @@eye_core@@ 松装的 LateralFrame。</li><li>LR 舵机回中（90°）。</li><li>两只眼球用手摆到朝正前方。</li>'
+                       '<li>CentralServoHorn 压到 LR 舵机轴上，拧舵机自带的舵盘螺丝。</li><li>装回 LateralFrame：<b>中间的环卡到舵盘后端的卡柱，两端的环卡到两只 EyeAdaptor 尾部的卡柱</b>。有小圆点的一面朝上，直梁在环的后面。</li>'
+                       '<li>用手轻轻左右拨，<b>两只眼要一起动，停下来时都朝正前方</b>。一只歪了就回到第 3 步。</li></ol>'
+                       '模型没画 LateralFrame，图里的紫色件是按孔位放回去的，三个环都和卡柱同轴。',
+                  rows=[]))
+STEPS.append(dict(key='eye_ud', title='眼部 ⑥ 上下控制：UD 舵机 → Y 轴', parts=[(61, C_SERVO), (47, C_HORN), (56, C_LEV), (39, C_HOLD), (34, C_BASE)], context=EYE_PRE + [35, 54], extra=GRAY(XA, XB, *RA),
+                  screws=[], letters={}, dir=(-0.75, 0.45, -0.5), size=(1000, 760),
+                  notes_on_fig=[lab(47, 'VerticalHorn', dz=10), lab(56, 'VerticalLever', dz=10), lab(61, 'UD 舵机', dz=-4), lab(39, 'Y 轴支架', dz=-14)],
+                  text='这一步让两只眼球一起上下转。传动路线：<b>UD 舵机 → VerticalHorn → VerticalLever（拱形）→ Y 轴支架 EyeCorePivotHolder → 整个眼球核心上下摆</b>。这三段的接触关系在模型里都能量到。'
+                       '<ol><li>UD 舵机不好够，官方建议先取下压扣，把舵机拿出来，<b>记住原来的位置和朝向</b>。</li><li>UD 舵机回中（90°）。</li><li>在外面把 VerticalHorn 压到舵机轴上，拧舵盘螺丝，再把 VerticalLever 卡到舵盘上。</li>'
+                       '<li>舵机放回原位，扣回压扣。</li><li>VerticalLever 另一头卡到 Y 轴支架上，这时眼球要朝正前方。</li><li>用手轻轻上下拨，确认两只眼一起动、没有卡点。</li></ol>',
+                  rows=[]))
+s = BY['eye3']
+s.update(key='eye_horn', title='眼部 ⑦ 眼皮：舵盘和连杆（先回中再装）', context=EYE_PRE + [39, 35, 54, 61, 47, 56, 34], extra=GRAY(XA, XB, *RA),
+         parts=[(g, C_HORN) for g in [28, 29, 30, 31]] + [(g, C_LEV) for g in [57, 60, 32, 42]],
+         notes_on_fig=[lab(30, 'TopLidHorn → TR', dz=10), lab(28, 'TopLidHorn → BR', dz=-10), lab(31, 'TopLidHorn → TL', dz=10), lab(29, 'TopLidHorn → BL', dz=-10),
+                       lab(57, 'TopLidLever', dz=8), lab(60, 'TopLidLever', dz=8), lab(32, 'BottomLidLever', dz=-8), lab(42, 'BottomLidLever', dz=-8)],
+         text='橙色是舵盘，压到眼皮舵机轴上；紫色是连杆，一头卡舵盘，一头卡眼皮。<b>上眼皮用短连杆 TopLidLever，下眼皮用长连杆 BottomLidLever。</b>'
+              '4 个舵机先回中（90°），四片眼皮摆到<b>闭合、在中间对齐</b>的位置再装，然后拧舵盘螺丝。固件里 TL/BL/TR/BR 的 90° 都是闭眼。差一个齿就拔下来换齿位，不要掰连杆。')
+s = BY['eyes']
+s.update(key='eye_done', title='眼部 ⑧ 装完后的样子', extra=[(XA, (0.78, 0.80, 0.86)), (XB, (0.78, 0.80, 0.86)), (RA[0], (0.78, 0.80, 0.86)), (RA[1], (0.78, 0.80, 0.86))], text='到这里眼部模块完成。用手轻推每片眼皮和眼球，确认整个行程没有卡点，<b>不要用力转</b>。接下来整块用 M3×8 装到框架上（图 @@skull_eye@@）。', rows=[])
+BY['ins_other'].update(title='热熔螺母 ③ 颧骨、眼部底板、头骨框架', text='颧骨下面 4 个、眼部底板 6 个（后面 2 个模型没画螺丝，框架上有对应孔，也压上）。框架和其他零件的孔见图下方的表。',
+                       table=[('M3', 'Ø4.4', 4, '颧骨 CheekBone'), ('M3', 'Ø4.3', 6, '眼部底板 SnapEyemech_v20')], after=final_fig.ins_all)
+BY['brows']['title'] = '眉毛模块（模型里没画螺丝）'
+STEPS.append(dict(key='eye_core', title='眼部 ① 先在桌上组眼球核心', custom=final_fig.eye_core,
+                  text='<b>这一步模型里没有，之前的文档漏了。</b>两根横梁把两只眼球连在一起：<b>EyeCorePivotHolder_v2（X 轴件 A）</b>在下面，托住 LR 舵机和两只眼球的转轴；<b>LateralFrame（X 轴件 B，3 个圆环）</b>在上面，负责带动两只眼左右转。下面第一张图是它们的最终位置，是按孔位放回去的。', parts=[], screws=[], letters={}))
+STEPS.append(dict(key='tongue', title='舌头 + 牙齿', custom=final_fig.tongue,
+                  text='TON 舵机带 Part_20，Part_20 拉 Part_21，Part_19 是前面的转轴。模型没画这 4 颗螺丝，下面按同轴孔推出来。'
+                       '<b>舌头和 4 块牙齿、牙龈都没有螺丝孔</b>，推断是胶粘：下牙龈贴下颌座，下牙贴下牙龈，上牙龈贴上颌座，上牙贴上牙龈，舌头粘到 Part_21 上面。先干装确认张嘴时不碰，再用胶。', parts=[], screws=[], letters={}))
+STEPS.append(dict(key='skull_eye', title='眼部模块 → 头骨框架', parts=[(0, C_CLAMP), (44, C_RECV)] + [(g, C_SERVO) for g in EYE_SERVO],
+                  screws=M3x8_EYE, letters=L('M3×8'), dir=(1.0, 0.3, 0.1), explode=14, size=(1000, 820),
+                  text='眼部模块从框架<b>前面</b>送进去，稍微往后下方走。M3×8 从框架外侧往里，每侧 3 颗。图里画了每侧 2 颗，第 3 颗在它们后面（y=8），模型没画。<b>你手上的 M3×8 是外六角头，先试一颗看沉孔放不放得下。</b>',
+                  rows=[('A', 'M3×8', 6, '头骨框架（孔 Ø3.6）', '眼部底板 · M3 热熔螺母')]))
+STEPS.append(dict(key='brow_skull', title='眉毛模块 → 头骨框架', custom=final_fig.brow_skull,
+                  text='眉毛模块从<b>前上方</b>送进框架，在眼部上面。8 颗 M4 从框架外侧往里拧进 Part_4：两侧各 3 颗，前面斜着各 1 颗。图上画的是机器人左侧 4 颗，右侧镜像。'
+                       '<b>长度用 M4×12。</b>M4×8 只进螺母 1 mm，不够；M4×16 会顶到孔底。模型没画这些螺丝，孔位是实测同轴的。TPU 眉毛装之前先把这一步做完。',
+                  rows=[('A', 'M4×12', 8, '头骨框架（孔 Ø4.6）', 'Part_4 · M4 热熔螺母')], parts=[], screws=[], letters=L('M4×12')))
+BY['skull_mouth'].update(title='嘴部模块 + 颧骨 → 头骨框架',
+                         text='嘴部模块带着颧骨，从<b>前下方</b>往上送，塞进框架下部左右两块竖板中间。6 颗 M4×16（每侧 3 颗）<b>从竖板外侧水平往里</b>，拧进上颌座侧面的 M4 热熔螺母。先把嘴部整个装好、调好，再挂上去。')
+STEPS.append(dict(key='skull_cheek', title='颧骨 → 头骨框架', parts=[(0, C_CLAMP), (27, C_RECV)], screws=M3x8_CHEEK, letters=L('M3×8'), dir=(1.0, 0.3, 0.1), explode=14, size=(1000, 820),
+                  text='颧骨两侧再各用 2 颗 M3×8 固定到框架上，从框架外侧往里。', rows=[('A', 'M3×8', 4, '头骨框架（孔 Ø3.6）', '颧骨 · M3 热熔螺母')]))
+STEPS.append(dict(key='pcb', title='三块板 → 头骨框架', custom=final_fig.pcb,
+                  text='框架里面有一块斜板，孔距和板子吻合：<b>中间 65×48 是嘴部板，两侧 29.6 是眼眉板</b>，两块眼眉板哪边都行。图是从斜板正上方看，绿色是板子占的位置，黑点是孔。'
+                       '板子背面有引脚，要垫高：M3×10 穿板子和 5 mm 垫柱，拧进框架的 M3 热熔螺母。垫柱高度是我估的，确认引脚不碰框架。眼眉板只有 2 个孔。模型没画板子，安装方向以 Pico 的 USB 线和电源线好走为准。',
+                  rows=[('A', 'M3×10', 8, '板子 + 5 mm 垫柱', '框架斜板 · M3 热熔螺母')], parts=[], screws=[], letters=L('M3×10')))
+STEPS.append(dict(key='fan', title='风扇支架 + 风扇', custom=final_fig.fan,
+                  text='支架贴在框架后面，A 从支架穿进框架。风扇从支架后面装，B 穿过风扇的 4 个角，拧进支架。孔距 40，对应 50×50×10 风扇。后盖封口后风扇抽不出去，可以先不装，等试运行发现发热再说。B 的长度：风扇 10 + 螺母 4，用 M3×14；用风扇自带的自攻螺丝也行，那支架上就不用压螺母。',
+                  rows=[('A', 'M3×8', 6, 'FanBracket（孔 Ø3.4）', '框架 · M3 热熔螺母'), ('B', 'M3×14', 4, '风扇', 'FanBracket · M3 热熔螺母')], parts=[], screws=[], letters=L('M3×8', 'M3×14')))
+STEPS.append(dict(key='shell', title='合外壳', custom=final_fig.shell,
+                  text='标定、走线都做完再合壳。后盖 RearPlate 从后面套上，<b>11 颗</b> M3×6（A）：两侧各 3、上方斜着 2、下方后面 2、顶上 1。前上盖 FrontVent 从上面盖，4 颗 M3×6（B）。'
+                       '两个盖子的孔都有 Ø6 沉孔，螺丝头埋进去。额头条 FrontPlate 没有螺丝孔，贴到开口上用胶。框架外侧的 M3×10 模型里有，但外壳上没有孔，<b>不用装</b>。'
+                       '<b>后盖用封口版</b>（2026-11-05 改的，出风口已封上），所以不用 RearVent 后格栅。头里的风没有后出口，合壳后先跑 10 分钟，摸舵机和板子的温度。',
+                  rows=[('A', 'M3×6', 11, 'RearPlate（沉孔）', '框架 · M3 热熔螺母'), ('B', 'M3×6', 4, 'FrontVent（沉孔）', '框架 · M3 热熔螺母')], parts=[], screws=[], letters=L('M3×6')))
+STEPS.append(dict(key='neck', title='装到颈部支架', custom=final_fig.neck,
+                  text='支架是自己画的，原版没有。头放到两根斜立柱上，用 2 根扎带穿过立柱上端的扎带孔，绑住框架底部横梁。整头约 870 g，重心偏前，支架底板要放稳。', parts=[], screws=[], letters={}))
+ORDER = [('A 准备：先把所有热熔螺母压好', ['ins_top', 'ins_jaw', 'ins_other']),
+         ('B 眼部模块（桌上组装）', ['eye_core', 'eye_base', 'eye_lid', 'eye_servo', 'eye_lr', 'eye_ud', 'eye_horn', 'eye_done']),
+         ('C 眉毛模块（桌上组装）', ['brows']),
+         ('D 嘴部模块（桌上组装）', ['servo_top', 'servo_jaw', 'mg996', 'jawlink', 'm25', 's3', 'upper_l', 'upper_r', 's4', 'tongue', 'cheek']),
+         ('E 总装：模块装进头骨框架', ['skull_eye', 'brow_skull', 'skull_mouth', 'skull_cheek']),
+         ('F 电子、风扇、外壳', ['pcb', 'fan', 'shell', 'neck'])]
+BY = {s['key']: s for s in STEPS}
+STEPS[:] = [dict(BY[k], stage=(t if i == 0 else None)) for t, ks in ORDER for i, k in enumerate(ks)]
+FIGNO = {s['key']: i for i, s in enumerate(STEPS, 1)}
+
 
 def build():
     out = []
     for i, st in enumerate(STEPS, 1):
         print('render', st['key'], flush=True)
-        svg = figure(st)
+        svg = None if 'custom' in st else figure(st)
         rows = ''
+        if st.get('stage'):
+            out.append(f'<h2 class="stage" id="stage-{st["stage"][0]}">{html.escape(st["stage"])}</h2>')
         if st.get('rows'):
             rows = ('<table class="sc"><thead><tr><th>标</th><th>螺丝</th><th>数量</th><th>穿过</th><th>拧进</th><th>扳手</th></tr></thead><tbody>'
                     + ''.join(f'<tr><td><span class="lb" style="background:{lb_col(st, r[1])}">{r[0]}</span></td><td><b>{r[1]}</b></td>'
@@ -438,15 +539,17 @@ def build():
                     + ''.join(f'<tr><td><b>{a}</b></td><td>{b}</td><td>{c}</td><td>{d}</td></tr>' for a, b, c, d in st['table'])
                     + '</tbody></table>')
         out.append(f'<section class="stp" id="{st["key"]}"><h3><input type="checkbox" data-k="fig-{st["key"]}"> 图 {i} · {html.escape(st["title"])}</h3>'
-                   f'<p>{st["text"]}</p>{ins_other_fig.html(S) if st["key"] == "ins_other" else '<div class="fig3d">' + svg + '</div>'}{rows}{jaw_m2_fig.html(S) if st["key"] == "ins_jaw" else ""}{servo_shaft_fig.html(S) if st["key"] == "mg996" else ""}{link_id_fig.html(S) if st["key"] == "m25" else ""}{lip_link_fig.html(S) if st["key"] == "m25" else ""}{s3_chain_fig.html(S) if st["key"] == "s3" else ""}{brow_fig.html(S) if st["key"] == "brows" else ""}</section>')
-    frag = '\n'.join(out)
+                   f'<p>{st["text"]}</p>{st["custom"](S) if "custom" in st else ins_other_fig.html(S) if st["key"] == "ins_other" else '<div class="fig3d">' + svg + '</div>'}{rows}{st["after"]() if "after" in st else ""}{jaw_m2_fig.html(S) if st["key"] == "ins_jaw" else ""}{servo_shaft_fig.html(S) if st["key"] == "mg996" else ""}{link_id_fig.html(S) if st["key"] == "m25" else ""}{lip_link_fig.html(S) if st["key"] == "m25" else ""}{s3_chain_fig.html(S) if st["key"] == "s3" else ""}{brow_fig.html(S) if st["key"] == "brows" else ""}</section>')
+    frag = final_fig.overview_section(S) + '\n' + '\n'.join(out)
+    frag = re.sub(r'@@(\w+)@@', lambda m: str(FIGNO[m.group(1)]), frag)
+    json.dump(FIGNO, open(os.path.join(OUT, 'figmap.json'), 'w'))
     open(os.path.join(OUT, 'steps_fragment.html'), 'w').write(frag)
     print('fragment', len(frag) // 1024, 'KB')
 
 
 def lb_col(st, label):
     sp = {'M2×6': 'M2', 'M2×8': 'M2', 'M2.5×8': 'M2.5', 'M3×6': 'M3', 'M3×8': 'M3', 'M4×6': 'M4', 'M4×8': 'M4', 'M4×16': 'M4',
-          'M3 台阶螺丝': 'S3', 'M4 台阶螺丝': 'S4'}[label]
+          'M3×10': 'M3', 'M3×14': 'M3', 'M4×12': 'M4', 'M3 台阶螺丝': 'S3', 'M4 台阶螺丝': 'S4'}[label]
     return '#%02x%02x%02x' % tuple(int(c * 255) for c in SCREW_C[sp])
 
 

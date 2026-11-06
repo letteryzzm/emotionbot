@@ -18,6 +18,14 @@ import numpy as np
 FIRMWARE = Path(__file__).resolve().parent.parent / "firmware"
 BOARDS = ("eyes", "brows", "mouth")
 
+# 接线约定（docs/舵机接线与上电检查.html）。舵机名里的 L/R 不是统一的：按连杆方向反推，
+# 眼皮、眉毛的 L 在机器人右侧，嘴唇、嘴角的 L 在机器人左侧。
+# 前提是角度增大时舵机逆时针转（从输出轴看）。S LR=110 后眼球转向机器人右侧，就改成 False。
+ANGLE_UP_IS_CCW = True
+EYE_BROW_L_IS_ROBOT_LEFT = not ANGLE_UP_IS_CCW
+MOUTH_L_IS_ROBOT_LEFT = ANGLE_UP_IS_CCW
+LR_UP_IS_ROBOT_LEFT = ANGLE_UP_IS_CCW   # LR 角度增大 = 眼球看向机器人左侧
+
 
 @dataclass(frozen=True)
 class Actuator:

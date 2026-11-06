@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Ellipse
 
-from .actuators import NAMES
+from .actuators import EYE_BROW_L_IS_ROBOT_LEFT, MOUTH_L_IS_ROBOT_LEFT, NAMES
 
 
 def draw(v, ax=None, title=None):
@@ -20,7 +20,8 @@ def draw(v, ax=None, title=None):
     ax.add_patch(Ellipse((0, 0), 3.6, 4.2, fc="#f3dcc6", ec="k"))
     gx, gy = (u["LR"] - 0.5) * 0.3, (u["UD"] - 0.5) * 0.2
     # 机器人的左眼画在观众右侧
-    for side, x in (("L", 0.7), ("R", -0.7)):
+    lx = 0.7 if EYE_BROW_L_IS_ROBOT_LEFT else -0.7
+    for side, x in (("L", lx), ("R", -lx)):
         top, bot = u[f"T{side}"], u[f"B{side}"]
         y0 = 0.45
         ax.add_patch(Ellipse((x, y0), 0.8, 0.5, fc="white", ec="k"))
@@ -34,6 +35,8 @@ def draw(v, ax=None, title=None):
     up_l, up_r = u["LUL"] - 0.5, u["LUR"] - 0.5
     cu_l, cu_r = u["CUL"] - 0.5, u["CUR"] - 0.5
     w_l, w_r = 0.45 + 0.25 * u["CLL"], 0.45 + 0.25 * u["CLR"]
+    if not MOUTH_L_IS_ROBOT_LEFT:  # 下面的 _l 画在观众右侧，也就是机器人左侧
+        up_l, up_r, cu_l, cu_r, w_l, w_r = up_r, up_l, cu_r, cu_l, w_r, w_l
     my = -1.0
     xs = np.array([-w_r, 0, w_l])
     upper = my + np.array([0.4 * cu_r, 0.08 + 0.15 * (up_l + up_r) / 2, 0.4 * cu_l])

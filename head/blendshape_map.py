@@ -6,7 +6,7 @@ mirror=True：机器人像照镜子一样模仿对面的人（人的左眼 -> �
 """
 import numpy as np
 
-from .actuators import NAMES, rest_vector
+from .actuators import EYE_BROW_L_IS_ROBOT_LEFT, LR_UP_IS_ROBOT_LEFT, MOUTH_L_IS_ROBOT_LEFT, NAMES, rest_vector
 
 
 def _c(x):
@@ -16,13 +16,18 @@ def _c(x):
 def blendshapes_to_u(bs: dict, mirror=True):
     g = lambda k: bs.get(k, 0.0)  # noqa: E731
     # MediaPipe 的 Left/Right 是被拍的人自己的左右
-    L, R = ("Right", "Left") if mirror else ("Left", "Right")
+    robot_l, robot_r = ("Right", "Left") if mirror else ("Left", "Right")
+    # L/R：嘴部舵机名；EL/ER：眼皮、眉毛舵机名。两组的左右定义不同，见 actuators.py
+    L, R = (robot_l, robot_r) if MOUTH_L_IS_ROBOT_LEFT else (robot_r, robot_l)
+    EL, ER = (robot_l, robot_r) if EYE_BROW_L_IS_ROBOT_LEFT else (robot_r, robot_l)
 
     look_r = (g("eyeLookOutRight") + g("eyeLookInLeft")) / 2
     look_l = (g("eyeLookOutLeft") + g("eyeLookInRight")) / 2
     look_up = (g("eyeLookUpLeft") + g("eyeLookUpRight")) / 2
     look_dn = (g("eyeLookDownLeft") + g("eyeLookDownRight")) / 2
-    lr = look_l - look_r if mirror else look_r - look_l
+    # 看向机器人左侧为正。镜像时人看自己的右边，机器人看它自己的左边
+    gaze_robot_left = look_r - look_l if mirror else look_l - look_r
+    lr = gaze_robot_left if LR_UP_IS_ROBOT_LEFT else -gaze_robot_left
 
     def lid_top(side):
         return _c(1 - g(f"eyeBlink{side}") - 0.3 * g(f"eyeSquint{side}") + 0.3 * g(f"eyeWide{side}"))
@@ -33,12 +38,12 @@ def blendshapes_to_u(bs: dict, mirror=True):
     u = {
         "LR": _c(0.5 + 0.8 * lr),
         "UD": _c(0.5 + 0.8 * (look_up - look_dn)),
-        "TL": lid_top(L), "BL": lid_bot(L),
-        "TR": lid_top(R), "BR": lid_bot(R),
-        "LI": _c(0.5 + 0.5 * g("browInnerUp") - 0.6 * g(f"browDown{L}")),
-        "RI": _c(0.5 + 0.5 * g("browInnerUp") - 0.6 * g(f"browDown{R}")),
-        "LO": _c(0.5 + 0.5 * g(f"browOuterUp{L}") - 0.3 * g(f"browDown{L}")),
-        "RO": _c(0.5 + 0.5 * g(f"browOuterUp{R}") - 0.3 * g(f"browDown{R}")),
+        "TL": lid_top(EL), "BL": lid_bot(EL),
+        "TR": lid_top(ER), "BR": lid_bot(ER),
+        "LI": _c(0.5 + 0.5 * g("browInnerUp") - 0.6 * g(f"browDown{EL}")),
+        "RI": _c(0.5 + 0.5 * g("browInnerUp") - 0.6 * g(f"browDown{ER}")),
+        "LO": _c(0.5 + 0.5 * g(f"browOuterUp{EL}") - 0.3 * g(f"browDown{EL}")),
+        "RO": _c(0.5 + 0.5 * g(f"browOuterUp{ER}") - 0.3 * g(f"browDown{ER}")),
         "JL": _c(1.2 * g("jawOpen")), "JR": _c(1.2 * g("jawOpen")),
         "LUL": _c(0.5 + 0.5 * g(f"mouthUpperUp{L}")),
         "LUR": _c(0.5 + 0.5 * g(f"mouthUpperUp{R}")),

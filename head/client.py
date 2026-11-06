@@ -5,6 +5,11 @@ import time
 from .actuators import ACTUATORS, BY_NAME, NAMES, to_angles
 
 
+def pico_ports():
+    """Mac 用 usbmodem；Linux 只认 MicroPython 的 by-id，不碰机械臂和摄像头的 ttyACM"""
+    return sorted(glob.glob("/dev/cu.usbmodem*")) + sorted(glob.glob("/dev/serial/by-id/*MicroPython*"))
+
+
 class HeadClient:
     def __init__(self, ports=None, baud=115200, links=None):
         # links: {board: 有 write/readline 的对象}，测试时传假串口
@@ -18,7 +23,7 @@ class HeadClient:
         import serial
 
         links = {}
-        for p in ports or sorted(glob.glob("/dev/cu.usbmodem*")):
+        for p in ports or pico_ports():
             s = serial.Serial(p, baud, timeout=0.5)
             time.sleep(0.1)
             s.reset_input_buffer()

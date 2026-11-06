@@ -14,7 +14,7 @@ CSS = """
 table.sc .lb{display:inline-block;width:20px;height:20px;border-radius:50%;color:#fff;text-align:center;font-weight:800;line-height:20px;font-size:12px}
 .legend2{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13.5px;margin:8px 0 0}.legend2 span{display:inline-flex;align-items:center;gap:6px}
 """
-INTRO = """<section><h2>螺丝装配图解（按装配顺序）</h2>
+INTRO = """<section><h2>图解（按装配顺序）</h2>
 <p>图都是从原作者的参考装配模型直接渲染的，零件位置和螺丝方向都是真实的。螺丝画成"拔出来"的样子：<b>虚线 = 螺丝要走的路径，虚线末端的小黑点 = 螺丝头最后停的位置</b>。被挡住的螺丝画成半透明。</p>
 <div class="legend2">
 <span><i class="sw" style="background:#99bdeb"></i>螺丝拧进去的零件（里面有热熔螺母）</span>
@@ -38,6 +38,19 @@ else:
     anchor = '<section>\n<h2>逐步清单</h2>'
     assert anchor in s
     s = s.replace(anchor, block + '\n\n' + anchor, 1)
+import json, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+FM = json.load(open(os.path.join(HERE, '../../outputs/assembly/figmap.json')))
+if '/*STAGE*/' not in s:
+    s = s.replace('</style>', '/*STAGE*/\na.fl{white-space:nowrap;color:inherit;text-decoration:underline}\nh2.stage{margin:34px 0 10px;padding:8px 12px;background:var(--mech);color:#fff;border-radius:8px;font-size:19px}\n</style>', 1)
+# NOW 块：只换开头到“舵机回中”之前，回中步骤保留
+import final_fig
+now = re.sub(r'@@(\w+)@@', lambda m: str(FM[m.group(1)]), final_fig.NOW)
+s = re.sub(r'<!--NOW-BEGIN-->.*?(?=<h3>舵机回中怎么做)', lambda m: '<!--NOW-BEGIN-->\n' + now, s, flags=re.S)
+s = re.sub(r'<p class="muted">上颚那部分（图[^<]*</p>\n(</section>\n<!--NOW-END-->)', r'\1', s)
+s = re.sub(r'台阶螺丝怎么用普通螺丝代替（图 [0-9]+、图 [0-9]+ 的替代做法）', f'台阶螺丝怎么用普通螺丝代替（图 {FM["s3"]}、图 {FM["s4"]} 的替代做法）', s)
+s = re.sub(r'嘴唇、嘴角转轴 ×14（图 [0-9]+）', f'嘴唇、嘴角转轴 ×14（图 {FM["s3"]}）', s)
+s = re.sub(r'上唇、下唇大转轴 ×4（图 [0-9]+）', f'上唇、下唇大转轴 ×4（图 {FM["s4"]}）', s)
 s = s.replace("document.querySelectorAll('.step input')", "document.querySelectorAll('input[data-k]')")
 open(NOTE, 'w').write(s)
 print('ok', len(s) // 1024, 'KB')

@@ -49,8 +49,8 @@ def card(S, row, l, r, g, a, b, dist, tot, hub, arm):
 
 def html(S):
     rows = ''.join(f'<tr><td>{r[0]}</td><td>{r[1]} / {r[2]}</td><td>{r[6]}</td><td>{r[7]}</td><td>{r[8]}</td><td>{r[9]}</td></tr>' for r in T)
-    return ('<h4>图 8 每一行是哪个零件</h4><p>图 8 从上到下 4 行，每行左右各一根，一共 4 种。<b>每种的两根形状相同，左右可以互换，只要别换到别的行。</b></p>'
-            '<table class="sc"><thead><tr><th>图 8 第几行</th><th>STL 名字</th><th>孔距 mm</th><th>总长 mm</th><th>轴端厚 mm</th><th>舵机面朝下放，薄臂</th></tr></thead><tbody>'
+    return ('<h4>上图每一行是哪个零件</h4><p>上图从上到下 4 行，每行左右各一根，一共 4 种。<b>每种的两根形状相同，左右可以互换，只要别换到别的行。</b></p>'
+            '<table class="sc"><thead><tr><th>上图第几行</th><th>STL 名字</th><th>孔距 mm</th><th>总长 mm</th><th>轴端厚 mm</th><th>舵机面朝下放，薄臂</th></tr></thead><tbody>'
             + rows + '</tbody></table>'
             '<p><b>按这个顺序分：</b></p><ol>'
             '<li>先挑出 8 根舵机连杆：一端是台阶孔，外面 Ø3 小孔，朝舵机的一面是 Ø4.4 光滑沉孔，舵机轴插进这个沉孔。两端都是直通孔的（Ø5.3 + Ø4.3：ULLLinkB、Part_36、Part_28、Part_39）不属于这一步。</li>'
