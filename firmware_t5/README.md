@@ -1,5 +1,7 @@
 # T5 固件（EB2 版）
 
+> 历史实现。2026-11-10 已确定后续不使用 T5 开发板；新阶段由电脑直接接入麦克风、摄像头和扬声器。本目录保留用于追溯，不作为新流程的构建或运行依赖，见[下一阶段方案](../docs/下一阶段方案-上位机情绪识别与标定.md)。
+
 基于协作者的线条表情版（`/srv/robot-head/t5_screen`，TuyaOpen 示例 `emotionbot_screen`），新增 `eb2.c/.h`，改动 `main.c`：
 
 - 去掉 LVGL 定时器轮询 UART，改由 `eb2_start()` 启动收发线程；EB1 命令仍由 `host_command()` 处理，`EMOTION` 改 LVGL 对象时持 `lv_vendor_disp_lock()`。

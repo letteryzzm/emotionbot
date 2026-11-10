@@ -4,11 +4,13 @@
 
 灵眸是一颗能做表情、跟随视线、模仿人脸的机器人头。项目从 Will Cogley 的 Robot Head α2.0.33 复现起步，完成打印、PCB、装配和舵机调试，再接入摄像头、语音与京剧脸谱演示。
 
-3 块 Raspberry Pi Pico 控制眼、眉、嘴共 **21 个舵机**；电脑负责感知与动作编排，T5AI 承担屏幕与音频接口。软件保留 22 个控制通道，其中 `EXA` 是未接的预留通道。
+3 块 Raspberry Pi Pico 控制眼、眉、嘴共 **21 个舵机**；电脑负责感知与动作编排。**后续不再使用 T5 开发板**，麦克风、摄像头和扬声器直接接入电脑。软件保留 22 个控制通道，其中 `EXA` 是未接的预留通道。
 
 ![灵眸现场：真机头与网页脸谱同步展示](docs/media/demo现场.jpg)
 
-[看 Demo](#demo) · [运行入口](#运行入口) · [制作与联调资料](docs/资料导航.md) · [素材与版本说明](docs/项目版本与素材.md)
+[看 Demo](#demo) · [下一阶段方案](docs/下一阶段方案-上位机情绪识别与标定.md) · [运行入口](#运行入口) · [制作与联调资料](docs/资料导航.md) · [素材与版本说明](docs/项目版本与素材.md)
+
+> 2026-11-10 决策：采用电脑端输入与 Pico 控制；识别方案依据已有实验，选用 SenseVoiceSmall + EmotiEffNet-B0 本地快层、Qwen3-8B LoRA 上下文文本模块和 Omni 综合判断慢层。慢层有效结果覆盖同片段快层结果，不做快慢等权投票。当前处于方案固定阶段，实时慢层、LoRA 接入和标定库仍待实现；模型版本、证据与接入条件见[下一阶段方案](docs/下一阶段方案-上位机情绪识别与标定.md)。
 
 > 2026-11-09 整合：原 T9 工作区的灵眸演示代码已纳入仓库，并与原 main 的感知管线合并。两套运行入口均保留；模型、现场环境和大文件仍需另行准备。
 
@@ -37,17 +39,19 @@
 | 灵眸戏台 | 京剧 / 动漫预设动作；图像识别选择动作；2D 脸与真机同步 | 预设可离线；上传新图需要模型接口。动作尚未经过戏曲专业评审 |
 | 视觉交互 | 人脸位置与距离驱动视线和表情；表情模仿 | 依赖摄像头、FaceLandmarker 模型与实际标定 |
 | 统一控制 | 多来源动作合成、意图过期、手动接管、卸力与失联保护 | 没有舵机实际位置或电流反馈 |
-| T5AI | EB2 屏幕与双向 PCM 协议；已有板端传输实测 | 音质、回声消除和长期稳定性仍需现场验证 |
+| T5AI（历史方案） | 保留 EB2 屏幕与双向 PCM 协议、板端传输记录 | 后续不使用，不再作为开发或启动依赖 |
 | 情感识别研究 | FER / SER / TER 评测；包含感知、融合、规则决策与运行时 | 研究管线与灵眸现场版保留各自运行入口，未统一成一套控制流程 |
 
-## 系统怎么工作
+## 已有演示系统怎么工作
+
+下面描述已有灵眸演示代码。下一阶段将统一控制与标定入口，并接入实验推荐模型，见[方案](docs/下一阶段方案-上位机情绪识别与标定.md)。
 
 ```mermaid
 flowchart LR
     Camera[摄像头：跟随 / 模仿] --> Hub[head.hub_server：统一动作合成]
     Culture[脸谱 / 动漫图片] --> Actions[culture：识图与动作库]
     Actions --> Hub
-    Voice[T5 / 语音回复 / 嘴型] --> Hub
+    Voice[语音回复 / 嘴型] --> Hub
     UI[lingmou：模式与手动控制] --> Hub
     Hub --> Eyes[Pico：眼部 6]
     Hub --> Brows[Pico：眉部 4]
@@ -75,7 +79,7 @@ uv pip install -e '.[dev]'
 
 ### 灵眸演示版
 
-演示代码位于 `camera/`、`culture/`、`lingmou/`、`head/hub*.py` 和 `firmware_t5/`，已随仓库保存。
+演示代码位于 `camera/`、`culture/`、`lingmou/` 和 `head/hub*.py`，已随仓库保存。旧 T5 扩展 `firmware_t5/` 仅保留供追溯。
 
 ```bash
 # 2D 控制台：默认不打开串口
@@ -89,13 +93,13 @@ uv pip install -e '.[dev]'
 
 摄像头预览需安装 `uv pip install -e '.[vision]'` 并准备 `models/face_landmarker.task`，然后运行 `python -m camera.track --viz`，见[视觉模块](camera/README.md)。上传新图片另需配置 `CULTURE_API_BASE`、`CULTURE_API_KEY`、`CULTURE_MODEL`；网页不会接收密钥。
 
-现场总控入口是 `python -m lingmou.server`（端口 `8800`，演示页 `/demo`）。它依赖 ROG/Linux 的摄像头目录、独立语音环境和服务配置，启动时会拉起子进程；请按[灵眸戏台与现场部署](docs/灵眸戏台.md)复原环境。新机器先用上面的独立预览入口。
+历史现场总控入口是 `python -m lingmou.server`（端口 `8800`，演示页 `/demo`）。它依赖 ROG/Linux 的摄像头目录、独立语音环境和服务配置，包含旧 T5 链路，启动时会拉起子进程；[灵眸戏台与现场部署](docs/灵眸戏台.md)供历史复现。新阶段先用上面的独立预览入口，后续再统一总控。
 
 ### 多模态研究管线
 
 `perception/`、`agent/`、`app/` 提供另一条链路：音频 / 人脸 / 文本 → 情感融合与矛盾检测 → 规则策略 → 表情与 TTS，现已与演示代码保存在同一仓库。
 
-基础依赖安装后，运行 `.venv/bin/python -m app.run --stub --sim --source none --no-face --no-tts` 预览仪表盘，访问 `http://127.0.0.1:8000`；此命令不打开麦克风、摄像头或串口。完整模型环境使用 [Linux 安装脚本](scripts/setup_env.sh)或 [Windows 安装脚本](scripts/setup_env.ps1)，接口见[实时管道说明](docs/实时管道-队友接口.md)。`app.run` 与 `camera.web` 默认都用 8000 端口，真机模式也会占用串口；两套运行入口分开启动。
+基础依赖安装后，运行 `.venv/bin/python -m app.run --stub --sim --source none --no-face --no-tts` 预览仪表盘，访问 `http://127.0.0.1:8000`；此命令不打开麦克风、摄像头或串口。完整模型环境使用 [Linux 安装脚本](scripts/setup_env.sh)或 [Windows 安装脚本](scripts/setup_env.ps1)。`app.run` 已支持电脑麦克风，但当前默认模型、文本演示规则和融合流程尚未按新方案切换；新的输入与模型职责见[下一阶段方案](docs/下一阶段方案-上位机情绪识别与标定.md)。[旧实时管道说明](docs/实时管道-队友接口.md)仅供历史接口追溯。`app.run` 与 `camera.web` 默认都用 8000 端口，真机模式也会占用串口；两套运行入口分开启动。
 
 ### 接真机
 
@@ -121,7 +125,7 @@ uv pip install -e '.[dev]'
 |---|---|
 | `firmware/`、`head/` | Pico 固件、动作空间、电脑端控制 |
 | `camera/`、`culture/`、`lingmou/` | 灵眸演示：视觉、戏台、总控 |
-| `firmware_t5/` | T5 EB2 固件扩展，完整 SDK 另行准备 |
+| `firmware_t5/` | 历史 T5 EB2 固件扩展；后续不使用 |
 | `perception/`、`agent/`、`app/` | 多模态研究管线 |
 | `scripts/`、`tests/` | 调试、渲染、CAD 辅助脚本与自动化测试 |
 | `pcb/`、`print_package/` | 板卡工程与打印资料；完整打印包留外置盘 |
