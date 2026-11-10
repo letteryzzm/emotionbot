@@ -1,0 +1,48 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>眉毛线对调</title><style>
+:root{--bg:#f7f6f2;--card:#fff;--ink:#1f2328;--dim:#5f6670;--line:#e2e0d8;--warn:#b3412f}
+@media (prefers-color-scheme:dark){:root{--bg:#16181c;--card:#1f2228;--ink:#e8e8e6;--dim:#a0a6b0;--line:#33363d;--warn:#ff8f7f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 -apple-system,"PingFang SC",sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 56px}h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:0 0 10px}
+section{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin:14px 0}
+svg{width:100%;height:auto;display:block}svg text{fill:var(--ink)}svg text.in{fill:#fff}.b{font-size:17px;font-weight:700}.s{font-size:13px;fill:var(--dim)!important}
+.board{max-width:330px;margin:0 auto}ol{margin:0;padding-left:24px}li{margin:6px 0}.warn{color:var(--warn);font-weight:600}p{margin:6px 0}
+</style></head><body><main>
+<h1>对调这两根杜邦线</h1><p style="color:var(--dim)">只动眉毛板这一头，Pico 那头不要拔。</p>
+<section><h2>1. 先断电</h2><p class="warn">在调试台点"全部卸力"，再断 5V。</p></section>
+<section><h2>2. 找到这两针</h2><p>板子上 <b>左列</b>，从 USB 这头往下数第 11、12 针。下图放大的两个点就是。</p><div class="board"><svg viewBox="-40 0 340 570" role="img" aria-label="板子左列第 11、12 针的位置">
+<rect x="40" y="46" width="220" height="500" rx="6" fill="#1f6f54" stroke="#0d3b2c" stroke-width="3"/>
+<text x="150" y="28" text-anchor="middle" class="b">↑ USB 这一头朝上</text>
+<text x="150" y="300" text-anchor="middle" class="in" font-size="16">眉毛板</text>
+<text x="150" y="324" text-anchor="middle" class="in" font-size="13">正面朝自己</text>
+<circle cx="70" cy="70" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="70" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="50" y="75" text-anchor="end" class="s">1</text><circle cx="70" cy="94" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="94" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="118" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="118" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="142" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="142" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="166" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="166" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="50" y="171" text-anchor="end" class="s">5</text><circle cx="70" cy="190" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="190" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="214" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="214" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="238" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="238" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="262" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="262" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="286" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="286" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="50" y="291" text-anchor="end" class="s">10</text><circle cx="70" cy="310" r="11" fill="#e8590c" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="310" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="48" y="316" text-anchor="end" class="b">第 11 针</text><circle cx="70" cy="334" r="11" fill="#f0a500" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="334" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="48" y="340" text-anchor="end" class="b">第 12 针</text><circle cx="70" cy="358" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="358" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="382" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="382" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="406" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="406" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="50" y="411" text-anchor="end" class="s">15</text><circle cx="70" cy="430" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="430" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="454" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="454" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="478" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="478" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="502" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="502" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="70" cy="526" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><circle cx="230" cy="526" r="6" fill="#d9c27a" stroke="#0d3b2c" stroke-width="2"/><text x="50" y="531" text-anchor="end" class="s">20</text></svg></div></section>
+<section><h2>3. 互换</h2><p>把插在这两针上的线拔下来，互换再插回去。线的颜色不重要，下图的橙、蓝只是为了区分。你的线现在看起来是直的还是交叉的都一样，互换就行。</p><svg viewBox="0 0 680 270" role="img" aria-label="两根线在板子这一头互换"><g transform="translate(0 0)">
+<text x="160" y="28" text-anchor="middle" class="b">换之前</text>
+<rect x="10" y="60" width="96" height="190" rx="6" fill="#1f6f54"/>
+<text x="58" y="50" text-anchor="middle" class="s">眉毛板</text>
+<rect x="214" y="60" width="96" height="190" rx="6" fill="#2f9150"/>
+<text x="262" y="50" text-anchor="middle" class="s">Pico（不动）</text>
+<text x="58" y="136" text-anchor="middle" class="in" font-size="14">第 11 针</text>
+<text x="58" y="196" text-anchor="middle" class="in" font-size="14">第 12 针</text>
+<text x="262" y="136" text-anchor="middle" class="in" font-size="14">11 脚</text>
+<text x="262" y="196" text-anchor="middle" class="in" font-size="14">12 脚</text>
+<path d="M214 130 C160 130 160 130 106 130" fill="none" stroke="#e8590c" stroke-width="7"/>
+<path d="M214 190 C160 190 160 190 106 190" fill="none" stroke="#2f7fd6" stroke-width="7"/>
+<circle cx="106" cy="130" r="9" fill="#e8590c"/><circle cx="106" cy="190" r="9" fill="#2f7fd6"/>
+<circle cx="214" cy="130" r="9" fill="#e8590c"/><circle cx="214" cy="190" r="9" fill="#2f7fd6"/>
+</g><g transform="translate(350 0)">
+<text x="160" y="28" text-anchor="middle" class="b">换之后</text>
+<rect x="10" y="60" width="96" height="190" rx="6" fill="#1f6f54"/>
+<text x="58" y="50" text-anchor="middle" class="s">眉毛板</text>
+<rect x="214" y="60" width="96" height="190" rx="6" fill="#2f9150"/>
+<text x="262" y="50" text-anchor="middle" class="s">Pico（不动）</text>
+<text x="58" y="136" text-anchor="middle" class="in" font-size="14">第 11 针</text>
+<text x="58" y="196" text-anchor="middle" class="in" font-size="14">第 12 针</text>
+<text x="262" y="136" text-anchor="middle" class="in" font-size="14">11 脚</text>
+<text x="262" y="196" text-anchor="middle" class="in" font-size="14">12 脚</text>
+<path d="M214 130 C160 130 160 190 106 190" fill="none" stroke="#e8590c" stroke-width="7"/>
+<path d="M214 190 C160 190 160 130 106 130" fill="none" stroke="#2f7fd6" stroke-width="7"/>
+<circle cx="106" cy="190" r="9" fill="#e8590c"/><circle cx="106" cy="130" r="9" fill="#2f7fd6"/>
+<circle cx="214" cy="130" r="9" fill="#e8590c"/><circle cx="214" cy="190" r="9" fill="#2f7fd6"/>
+</g></svg></section>
+<section><h2>4. 复测</h2><ol><li>接回 5V。</li><li>调试台第 7 组点"摆动 ±15"：<b>两边外侧</b>一起动。</li><li>第 8 组点"摆动 ±15"：<b>两边内侧</b>一起动。</li></ol><p>其他 3 根线（第 16、17 针和 GND）不动。不用改软件，也不用重刷。</p></section>
+</main></body></html>

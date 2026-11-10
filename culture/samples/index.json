@@ -1,0 +1,130 @@
+[
+ {
+  "file": "opera3_7526534.jpg",
+  "label": "白脸",
+  "author": "Shizhao",
+  "license": "CC BY 3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Cao_Cao_in_Beijing_Opera.JPG",
+  "result": {
+   "category": "opera",
+   "subject": "白脸奸臣",
+   "evidence": "面部大面积涂白，眉眼细长上挑，嘴角下撇，头戴官帽长髯。",
+   "emotion": "disgust",
+   "action": "lengxiao",
+   "intensity": 0.8,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "op6_90045896.jpg",
+  "label": "红脸",
+  "author": "Jnzl's Photos",
+  "license": "CC BY 2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Red_painted_face,_Haw_Par_Villa_(14790800921).jpg",
+  "result": {
+   "category": "opera",
+   "subject": "红脸长须武将",
+   "evidence": "面部为大面积红色整脸，头戴盔头，黑色长髯口，双目圆睁。",
+   "emotion": "neutral",
+   "action": "liangxiang",
+   "intensity": 0.8,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "op4_7585138.jpg",
+  "label": "黑脸",
+  "author": "Shizhao",
+  "license": "CC BY 3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Sha_Wujing_in_Beijing_opera.JPG",
+  "result": {
+   "category": "opera",
+   "subject": "戴大佛珠的花脸角色",
+   "evidence": "黑白相间的大块面勾脸，浓密黑髯口，佩戴黑色大念珠，神态凶猛。",
+   "emotion": "angry",
+   "action": "numu",
+   "intensity": 0.9,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "op4_7526800.jpg",
+  "label": "蓝脸",
+  "author": "Shizhao",
+  "license": "CC BY 3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Zhou_Cang_in_Beijing_opera.JPG",
+  "result": {
+   "category": "opera",
+   "subject": "蓝脸花脸武将",
+   "evidence": "面部为蓝色主调的脸谱，手持金色大刀，身穿戏装。",
+   "emotion": "angry",
+   "action": "gangzheng",
+   "intensity": 0.9,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "op5_94619944.jpg",
+  "label": "旦角",
+  "author": "老丁呀",
+  "license": "CC BY 2.5",
+  "source": "https://commons.wikimedia.org/wiki/File:%E6%9C%B1%E8%99%B9%E3%80%8A%E9%9C%B8%E7%8E%8B%E5%88%AB%E5%A7%AC%E3%80%8B%E6%A2%85%E5%85%B0%E8%8A%B3%E5%A4%A7%E5%89%A7%E9%99%A2_2.jpg",
+  "result": {
+   "category": "opera",
+   "subject": "旦角",
+   "evidence": "女性妆容，无花脸勾脸，头戴凤冠，手抚鬓发，眼神妩媚。",
+   "emotion": "neutral",
+   "action": "yanbo",
+   "intensity": 0.5,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "anime2_131511080.jpg",
+  "label": "大笑",
+  "author": "Artbreeder",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Orange_short_haired_anime_girl_portrait.jpg",
+  "result": {
+   "category": "anime",
+   "subject": "橙发短发少女",
+   "evidence": "二次元画风，人物张嘴大笑，眼睛明亮有神，充满活力。",
+   "emotion": "happy",
+   "action": "happy",
+   "intensity": 0.9,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "anime3_148975333.jpg",
+  "label": "微笑",
+  "author": "Ravimo",
+  "license": "CC BY 4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Arch-tan.jpg",
+  "result": {
+   "category": "anime",
+   "subject": "戴兜帽的蓝瞳少女",
+   "evidence": "二次元画风，大眼睛，双手拉着兜帽边缘，嘴角微微上扬露出自信神情。",
+   "emotion": "happy",
+   "action": "calm",
+   "intensity": 0.7,
+   "confidence": 1.0
+  }
+ },
+ {
+  "file": "anime2_131511181.jpg",
+  "label": "元气",
+  "author": "Artbreeder",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Anime_girl_portrait.jpg",
+  "result": {
+   "category": "anime",
+   "subject": "橙发双马尾少女",
+   "evidence": "二次元画风，红色大眼睛睁开，嘴巴张开露出舌头，笑容灿烂。",
+   "emotion": "happy",
+   "action": "happy",
+   "intensity": 0.9,
+   "confidence": 1.0
+  }
+ }
+]

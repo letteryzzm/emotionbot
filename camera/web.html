@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Head 视觉调试</title>
+<style>
+:root{--bg:#fff;--fg:#1c1c1e;--mut:#6b6b70;--card:#f3f3f5;--line:#d9d9de;--acc:#0a7d5a;--bar:#0a7d5a}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececee;--mut:#9a9aa0;--card:#232326;--line:#38383d;--acc:#3ecf9b;--bar:#3ecf9b}}
+*{box-sizing:border-box}body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,"PingFang SC",sans-serif}
+h1{font-size:18px;margin:0 0 12px}.grid{display:grid;grid-template-columns:minmax(0,640px) minmax(280px,1fr);gap:16px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:12px}
+img{width:100%;border-radius:8px;display:block;background:#000}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.stat b{display:block;font-size:20px}.stat span{color:var(--mut);font-size:12px}
+.zone{display:inline-block;padding:2px 10px;border-radius:12px;background:var(--acc);color:#fff;font-weight:600}
+label{display:flex;justify-content:space-between;color:var(--mut);font-size:12px;margin-top:8px}
+input[type=range]{width:100%}select,button{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.bars{display:grid;grid-template-columns:repeat(2,1fr);gap:2px 14px}.bar{display:flex;align-items:center;gap:6px;font-size:12px}
+.bar i{flex:0 0 30px;color:var(--mut);font-style:normal}.bar div{flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar div u{display:block;height:100%;background:var(--bar)}
+#vw:fullscreen{background:#000;display:flex;align-items:center;justify-content:center}
+#vw:fullscreen #cam{width:100vw;height:100vh;object-fit:contain;border-radius:0}
+#vw:fullscreen #ov{font-size:clamp(18px,2.6vw,40px)!important;left:16px!important;top:16px!important;right:16px!important;padding:12px 20px!important}
+#vw:fullscreen #fs{font-size:20px;right:16px;bottom:16px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.warn{color:#d9534f}
+</style></head><body>
+<h1>Head 视觉调试 <span class="zone" id="zone">-</span></h1>
+<div class="grid"><div>
+  <div class="card"><div id="vw" style="position:relative"><img id="cam" src="/stream" alt="camera"><button id="fs" title="全屏 (F / 双击画面)" style="position:absolute;right:8px;bottom:8px;opacity:.85">⛶ 全屏</button><div id="ov" style="position:absolute;left:8px;top:8px;right:8px;padding:6px 10px;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;font-size:13px;line-height:1.4"></div></div>
+    <div class="stats">
+      <div class="stat"><b id="dist">-</b><span>距离 m</span></div>
+      <div class="stat"><b id="pos">-</b><span>人脸 x,y</span></div>
+      <div class="stat"><b id="spd">-</b><span>移动速度</span></div>
+      <div class="stat"><b id="fps">-</b><span>fps</span></div>
+    </div></div>
+  <div class="card"><div style="color:var(--mut);font-size:12px;margin-bottom:6px">舵机 u（0~1）</div><div class="bars" id="bars"></div></div>
+</div><div>
+  <div class="card"><div class="row">
+    <label style="margin:0">强制表情
+      <select id="force"><option value="">自动（按距离）</option></select></label>
+    <label style="margin:0;gap:6px"><input type="checkbox" id="rot"> 画面转 180°</label>
+    <label style="margin:0;gap:6px"><input type="checkbox" id="hw"> 发送到真机</label></div>
+    <div id="hwmsg" style="color:var(--mut);font-size:12px;margin-top:6px"></div></div>
+  <div class="card" id="sliders"></div>
+</div></div>
+<script>
+const SL=[["far","无聊/感兴趣分界 m",0.8,4,0.05],["near","感兴趣/不舒服分界 m",0.25,1.2,0.01],["close","不舒服/害怕分界 m",0.1,0.6,0.01],
+["hfov","摄像头水平视场角 °",40,110,1],["gain","视线增益",0.3,2,0.05],["fast_speed","受惊速度阈值",0.5,5,0.1],
+["eye_alpha","眼球平滑 α",0.05,1,0.05],["expr_alpha","表情平滑 α",0.01,0.5,0.01]];
+const $=id=>document.getElementById(id);
+const toggleFs=()=>document.fullscreenElement?document.exitFullscreen():$("vw").requestFullscreen();
+$("fs").onclick=toggleFs;$("cam").ondblclick=toggleFs;
+document.addEventListener("keydown",e=>{if((e.key==="f"||e.key==="F")&&!/INPUT|SELECT/.test(e.target.tagName))toggleFs()});
+document.addEventListener("fullscreenchange",()=>{$("fs").textContent=document.fullscreenElement?"✕ 退出":"⛶ 全屏"});
+const post=o=>fetch("/params",{method:"POST",body:JSON.stringify(o)});
+fetch("/params").then(r=>r.json()).then(({params,poses})=>{
+ poses.forEach(p=>{const o=document.createElement("option");o.value=o.textContent=p;$("force").appendChild(o)});
+ $("force").value=params.force;$("hw").checked=params.hw;$("rot").checked=params.rotate180;
+ SL.forEach(([k,t,lo,hi,st])=>{const l=document.createElement("label");l.innerHTML=`<span>${t}</span><span id="v_${k}">${params[k]}</span>`;
+  const i=document.createElement("input");i.type="range";i.min=lo;i.max=hi;i.step=st;i.value=params[k];
+  i.oninput=()=>{$("v_"+k).textContent=i.value;post({[k]:+i.value})};$("sliders").append(l,i)});
+});
+$("force").onchange=e=>post({force:e.target.value});$("rot").onchange=e=>post({rotate180:e.target.checked});$("hw").onchange=e=>post({hw:e.target.checked});
+const DESC={bored:"无聊犯困：眼皮半闭、眉毛低垂、嘴角平，视线偶尔游走，眨眼慢而长",
+interested:"感兴趣：眉毛微抬、眼睛睁圆、微笑，盯着人",
+annoyed:"不舒服：眉内侧压低、眼睛眯起、嘴角微下",
+fear:"害怕：眼睛睁大、眉毛上抬、嘴角横拉"};
+const ZN={bored:"无聊",interested:"感兴趣",annoyed:"不舒服",fear:"害怕"};
+async function tick(){try{const s=await (await fetch("/state")).json();
+ if(!s.u)return;
+ $("zone").textContent=ZN[s.zone]||s.zone;$("dist").textContent=s.dist?s.dist.toFixed(2):"无人";
+ $("pos").textContent=s.face?`${s.x.toFixed(2)}, ${s.y.toFixed(2)}`:"-";$("spd").textContent=s.speed.toFixed(2);$("fps").textContent=s.fps.toFixed(0);
+ $("hwmsg").textContent=s.hw_msg||"";
+ $("ov").innerHTML=`<b>${ZN[s.zone]||s.zone}</b>${s.startle?" + <b>受惊</b>":""} · ${s.dist?s.dist.toFixed(2)+" m（瞳距 "+Math.round(s.ipd)+"px）":"无人"}<br>${DESC[s.zone]||"强制表情: "+s.zone}`;
+ const b=$("bars");if(!b.children.length)Object.keys(s.u).forEach(n=>{const d=document.createElement("div");d.className="bar";d.innerHTML=`<i>${n}</i><div><u id="b_${n}"></u></div>`;b.appendChild(d)});
+ for(const n in s.u)$("b_"+n).style.width=(s.u[n]*100)+"%";
+}catch(e){}setTimeout(tick,100)}
+tick();
+</script></body></html>

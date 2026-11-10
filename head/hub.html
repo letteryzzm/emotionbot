@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵眸控制台</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#20242a;--dim:#68707a;--line:#e0ded6;--acc:#0a7d5a;--bad:#c0392b;--warn:#a86a10;
+--face:#ebe6dc;--face-line:#b9b2a4;--lid:#d8d1c3;--white:#fff;--iris:#1f6f8b;--pupil:#10161c;--brow:#2c2f33;--mouth:#4b1f24;--lip:#7c3a3f;--tongue:#c8666c}
+@media(prefers-color-scheme:dark){:root{--bg:#15171b;--card:#1f2228;--ink:#e9e9e6;--dim:#9aa1aa;--line:#33373f;--acc:#3ecf9b;--bad:#e5645a;--warn:#e0a84a;
+--face:#2a2e35;--face-line:#50565f;--lid:#3a3f47;--white:#e8e6df;--iris:#39a0c0;--pupil:#0c0f13;--brow:#d8d6d0;--mouth:#160b0d;--lip:#a65a60;--tongue:#b0555b}}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif}
+header{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}h2{font-size:13px;margin:0 0 8px;color:var(--dim);font-weight:600}
+#mode{padding:2px 10px;border-radius:12px;background:var(--line);font-weight:600}#mode.on{background:var(--acc);color:#fff}
+#calib{color:var(--dim)}.sp{flex:1}
+button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--acc)}button.sel{background:var(--acc);border-color:var(--acc);color:#fff}
+#stop{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:700;padding:9px 18px}
+#msg{margin:0 16px;padding:0;color:var(--bad);font-weight:600}#msg:not(:empty){padding:10px 0 0}
+main{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:16px;padding:16px;max-width:1180px;margin:0 auto}
+@media(max-width:860px){main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+#face{display:block;width:100%;max-height:68vh}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chips{display:flex;gap:6px;flex-wrap:wrap;min-height:24px;margin-top:8px}
+.chip{font-size:12px;padding:1px 9px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}.chip.on{border-color:var(--acc);color:var(--acc)}
+.note{color:var(--dim);font-size:12px;margin:8px 0 0}
+label.l{display:flex;justify-content:space-between;color:var(--dim);font-size:12px}input[type=range]{width:100%;margin:2px 0 6px}
+#pad{position:relative;height:120px;border:1px solid var(--line);border-radius:8px;background:var(--bg);touch-action:none;cursor:crosshair}
+#dot{position:absolute;width:12px;height:12px;margin:-6px;border-radius:50%;background:var(--acc)}
+.bars{display:grid;grid-template-columns:1fr 1fr;gap:3px 14px}.bar{display:flex;align-items:center;gap:6px;font-size:12px}
+.bar i{flex:0 0 32px;font-style:normal;color:var(--dim)}.bar.ok i{color:var(--acc);font-weight:700}.bar b{flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden}.bar b u{display:block;height:100%;background:var(--acc)}
+.bar span{flex:0 0 36px;text-align:right;color:var(--dim);font-variant-numeric:tabular-nums}
+details summary{cursor:pointer;color:var(--dim);font-size:13px}.sl{display:grid;grid-template-columns:36px 1fr;gap:0 6px;align-items:center;font-size:12px;margin-top:4px}.sl input{margin:0}
+</style></head><body>
+<header><h1>灵眸控制台</h1><span id="mode">仿真</span><span id="calib"></span><span class="sp"></span>
+<button id="arm">连接真机</button><button id="stop" title="Esc">全部卸力</button></header>
+<div id="msg" role="alert"></div>
+<main><div>
+<div class="card">
+<svg id="face" viewBox="-200 -225 400 450" role="img" aria-label="机器人表情的 2D 渲染">
+<defs><clipPath id="cl"><ellipse cx="-72" cy="-42" rx="42" ry="31"/></clipPath><clipPath id="cr"><ellipse cx="72" cy="-42" rx="42" ry="31"/></clipPath><clipPath id="cm"><path id="mclip"/></clipPath></defs>
+<path d="M0-212C112-212 168-138 168-40C168 66 112 196 0 212C-112 196-168 66-168-40C-168-138-112-212 0-212Z" fill="var(--face)" stroke="var(--face-line)" stroke-width="3"/>
+<g id="eyeL"></g><g id="eyeR"></g>
+<line id="browL" stroke="var(--brow)" stroke-width="11" stroke-linecap="round"/><line id="browR" stroke="var(--brow)" stroke-width="11" stroke-linecap="round"/>
+<path id="mouth" fill="var(--mouth)"/><g clip-path="url(#cm)"><ellipse id="tongue" cx="0" rx="30" ry="15" fill="var(--tongue)"/></g>
+<path id="lipU" fill="none" stroke="var(--lip)" stroke-width="7" stroke-linecap="round"/><path id="lipL" fill="none" stroke="var(--lip)" stroke-width="7" stroke-linecap="round"/>
+</svg>
+<div class="chips" id="layers"></div>
+<p class="note">画面显示发给舵机的目标，不是舵机的真实位置；没标定的舵机在这里会动，但真机不会动。</p>
+</div>
+<div class="card"><h2>舵机 u（绿色名字 = 已标定，右侧是真机目标角度）</h2><div class="bars" id="bars"></div></div>
+</div><div>
+<div class="card"><h2>表情</h2><div class="row" id="poses"></div>
+<label class="l" style="margin-top:10px"><span>强度</span><span id="kv">60%</span></label><input id="k" type="range" min="0" max="1" step="0.05" value="0.6">
+<div class="row"><button id="clear">交还自动控制</button><button id="life">待机动作：开</button></div></div>
+<div class="card"><h2>视线（按住拖动，松开归还）</h2><div id="pad"><div id="dot"></div></div></div>
+<div class="card"><details><summary>逐个舵机滑条</summary><div id="sliders"></div></details></div>
+</div></main>
+<script>
+const $=i=>document.getElementById(i);let M,S,pose=null,lifeOn=true;
+const LABEL={neutral:"平静",happy:"开心",sad:"难过",angry:"生气",surprised:"惊讶",fear:"害怕",disgust:"厌恶",bored:"无聊",annoyed:"不舒服",interested:"感兴趣"};
+const SRC={idle:"待机",vision:"距离情绪",dialog:"对话情绪",lips:"嘴型",manual:"手动",reflex:"眨眼"};
+async function api(b){try{const r=await fetch("/api",{method:"POST",headers:{"Content-Type":"application/json","X-Head":"1"},body:JSON.stringify(b)});
+ const d=await r.json();$("msg").textContent=d.error||"";return d}catch(e){$("msg").textContent="连不上控制进程"}}
+function eye(id,x,clip){$(id).innerHTML=`<g clip-path="url(#${clip})"><rect x="${x-46}" y="-78" width="92" height="72" fill="var(--white)"/>
+<g class="ball"><circle cx="${x}" cy="-42" r="20" fill="var(--iris)"/><circle cx="${x}" cy="-42" r="9" fill="var(--pupil)"/></g>
+<rect class="top" x="${x-46}" y="-112" width="92" height="39" fill="var(--lid)"/><rect class="bot" x="${x-46}" y="-11" width="92" height="39" fill="var(--lid)"/></g>
+<ellipse cx="${x}" cy="-42" rx="42" ry="31" fill="none" stroke="var(--face-line)" stroke-width="3"/>`}
+function brow(el,x,inner,outer,sign){const y=v=>-104-46*(v-.5);el.setAttribute("x1",x-sign*38);el.setAttribute("x2",x+sign*38);el.setAttribute("y1",y(inner));el.setAttribute("y2",y(outer))}
+function draw(u){const f=M.flags,d=n=>u[n]-M.rest[n];
+ // 观众看到的左右：L/R 名字在眼眉和嘴部含义不同，来自 head/actuators.py
+ const eL=f.eye_l_robot_left?1:-1,sgn=f.lr_up_robot_left?1:-1,gx=(u.LR-.5)*2*sgn*24,gy=-(u.UD-.5)*2*14;
+ for(const[side,id,x]of[["L",eL>0?"eyeR":"eyeL",72*eL],["R",eL>0?"eyeL":"eyeR",-72*eL]]){const g=$(id);
+  g.querySelector(".ball").setAttribute("transform",`translate(${gx} ${gy})`);
+  g.querySelector(".top").setAttribute("transform",`translate(0 ${(1-u["T"+side])*38})`);
+  g.querySelector(".bot").setAttribute("transform",`translate(0 ${-(1-u["B"+side])*30})`);
+  brow($(side==="L"?(eL>0?"browR":"browL"):(eL>0?"browL":"browR")),x,u[side+"I"],u[side+"O"],Math.sign(x))}
+ const mL=f.mouth_l_robot_left?1:-1,V=(a,b)=>mL>0?[b,a]:[a,b]; // 返回 [观众左, 观众右]
+ const[cuA,cuB]=V(d("CUL"),d("CUR")),[clA,clB]=V(d("CLL"),d("CLR")),[luA,luB]=V(d("LUL"),d("LUR")),[llA,llB]=V(d("LLL"),d("LLR"));
+ const jaw=((u.JL+u.JR)/2),y0=112,xa=-66-clA*38,xb=66+clB*38,ya=y0-cuA*52,yb=y0-cuB*52;
+ const up=(v,x)=>y0-6-v*44,lo=v=>y0+6+jaw*74-v*30;
+ const U=`M${xa} ${ya}C${xa*.45} ${up(luA)} ${xb*.45} ${up(luB)} ${xb} ${yb}`,L=`C${xb*.45} ${lo(llB)} ${xa*.45} ${lo(llA)} ${xa} ${ya}`;
+ $("mouth").setAttribute("d",U+L+"Z");$("mclip").setAttribute("d",U+L+"Z");$("lipU").setAttribute("d",U);
+ $("lipL").setAttribute("d",`M${xb} ${yb}`+L);
+ $("tongue").setAttribute("cy",y0+6+jaw*62-u.TON*20)}
+function bars(){M.names.forEach(n=>{const e=document.createElement("div");e.className="bar"+(M.drivable.includes(n)?" ok":"");e.innerHTML=`<i>${n}</i><b><u id="b_${n}"></u></b><span id="a_${n}"></span>`;$("bars").append(e);
+ const s=document.createElement("div");s.className="sl";s.innerHTML=`<span>${n}</span><input type="range" min="0" max="1" step="0.01" value="${M.rest[n]}" aria-label="${n}">`;
+ s.querySelector("input").oninput=e=>api({op:"intent",source:"manual",values:{[n]:+e.target.value},ttl:null,merge:true});$("sliders").append(s)})}
+function poses(){M.poses.forEach(p=>{const b=document.createElement("button");b.textContent=LABEL[p]||p;b.dataset.p=p;b.onclick=()=>{pose=p;mark();send()};$("poses").append(b)})}
+const mark=()=>document.querySelectorAll("#poses button").forEach(b=>b.classList.toggle("sel",b.dataset.p===pose));
+const send=()=>pose&&api({op:"intent",source:"manual",pose,intensity:+$("k").value,ttl:null});
+$("k").oninput=e=>{$("kv").textContent=Math.round(e.target.value*100)+"%";send()};
+$("clear").onclick=()=>{pose=null;mark();api({op:"clear",source:"manual"})};
+$("life").onclick=()=>api({op:"life",on:!lifeOn});
+$("stop").onclick=()=>api({op:"estop"});document.addEventListener("keydown",e=>{if(e.key==="Escape")api({op:"estop"})});
+$("arm").onclick=()=>{const n=M.drivable.length;if(confirm(`连接真机后只驱动 ${n} 个舵机。第一次通电时舵机可能快速转到 90°，确认手和线都离开机构。继续？`))api({op:"arm"})};
+const pad=$("pad"),dot=$("dot");function at(e){const r=pad.getBoundingClientRect(),x=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+ dot.style.left=x*100+"%";dot.style.top=y*100+"%";const lr=M.flags.lr_up_robot_left?x:1-x;api({op:"intent",source:"manual",values:{LR:lr,UD:1-y},ttl:2,merge:true})}
+function center(){dot.style.left=dot.style.top="50%"}center();
+pad.onpointerdown=e=>{pad.setPointerCapture(e.pointerId);at(e)};pad.onpointermove=e=>{if(e.buttons)at(e)};
+pad.onpointerup=()=>{center();pose?send():api({op:"clear",source:"manual"})};
+function update(){if(!S)return;draw(S.u);const on=S.armed.length>0;$("mode").textContent=on?"真机："+S.armed.join(" "):"仿真";$("mode").classList.toggle("on",on);
+ $("arm").style.display=on?"none":"";lifeOn=S.life;$("life").textContent="待机动作："+(S.life?"开":"关");if(S.fault)$("msg").textContent="已全部卸力："+S.fault;
+ $("layers").innerHTML=S.layers.map(l=>`<span class="chip on">${SRC[l]||l}</span>`).join("")+`<span class="chip">${S.hz} Hz</span>`;
+ M.names.forEach(n=>{$("b_"+n).style.width=S.u[n]*100+"%";$("a_"+n).textContent=S.angles[n]!==undefined?S.angles[n].toFixed(0)+"°":"–"})}
+(async()=>{M=await(await fetch("/meta")).json();eye("eyeL",-72,"cl");eye("eyeR",72,"cr");bars();poses();
+ $("calib").textContent=`已标定 ${M.drivable.length}/${M.total}`+(M.allow_unverified?"（已放开未标定舵机）":"");
+ new EventSource("/events").onmessage=e=>{S=JSON.parse(e.data);requestAnimationFrame(update)}})();
+</script></body></html>

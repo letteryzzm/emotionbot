@@ -10,7 +10,13 @@ vision = ["mediapipe", "opencv-python"]
 dev = ["pytest", "mpremote"]
 
 [tool.setuptools]
-packages = ["head"]
+packages = ["head", "camera", "culture", "lingmou"]
+
+[tool.setuptools.package-data]
+camera = ["web.html"]
+head = ["hub.html"]
+culture = ["page.html", "face.js", "samples/*"]
+lingmou = ["console.html", "demo.html"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "camera"]

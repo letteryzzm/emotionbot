@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>灵眸控制台</title>
+<style>
+:root{--bg:#f3f1ec;--paper:#fff;--ink:#22201c;--dim:#6f6a60;--line:#ddd8cd;--red:#a8281e;--ok:#1d7a4f;--warn:#b26a00;--stage:#2a1512;--stage2:#431e18;
+--white:#fbf7ee;--iris:#1b1b1f;--pupil:#000;--lip:#8f2b2a;--mouth:#2b0c0d;--tongue:#c8666c}
+@media(prefers-color-scheme:dark){:root{--bg:#14120f;--paper:#1f1c18;--ink:#ece6da;--dim:#a59c8c;--line:#37312a;--red:#e0604f;--ok:#46c08a;--warn:#e0a63f}}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif}
+header{position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--line)}
+h1{font:700 20px/1.2 "Songti SC","Noto Serif CJK SC",serif;margin:0;letter-spacing:.06em}
+h2{font-size:13px;margin:0 0 8px;color:var(--dim);font-weight:600}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;padding:12px 16px 32px;max-width:1500px;margin:0 auto;align-items:start}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:12px;min-width:0}.wide{grid-column:span 2}@media(max-width:700px){.wide{grid-column:auto}}
+button{font:inherit;color:inherit;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover{border-color:var(--red)}button.on{background:var(--red);border-color:var(--red);color:#fff}button:disabled{opacity:.45;cursor:default}
+#stop{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}#arm.on{background:var(--ok);border-color:var(--ok)}
+input,select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}input[type=range]{padding:0;width:100%}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.dim{color:var(--dim);font-size:12.5px}
+.modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.modes button{text-align:left;padding:8px 10px}.modes b{display:block}.modes span{font-size:12px;opacity:.8;line-height:1.35;display:block}
+.pill{display:inline-flex;gap:5px;align-items:center;font-size:12.5px;padding:1px 8px;border:1px solid var(--line);border-radius:12px}.pill i{width:8px;height:8px;border-radius:50%;background:var(--dim)}.pill.ok i{background:var(--ok)}.pill.bad i{background:var(--red)}.pill.warn i{background:var(--warn)}
+#msg{color:var(--red);font-weight:600;flex-basis:100%}#msg:empty{display:none}
+#pad{position:relative;width:100%;aspect-ratio:2/1;background:var(--bg);border:1px solid var(--line);border-radius:7px;cursor:crosshair;touch-action:none}#pad i{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;background:var(--red)}#pad:before,#pad:after{content:"";position:absolute;background:var(--line)}#pad:before{left:50%;top:0;bottom:0;width:1px}#pad:after{top:50%;left:0;right:0;height:1px}
+#cam{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#000;border-radius:7px}
+.lv{height:7px;background:var(--line);border-radius:4px;overflow:hidden;position:relative}.lv u{display:block;height:100%;width:0;background:var(--ok)}.lv s{position:absolute;top:0;bottom:0;width:2px;background:var(--red)}
+#log{max-height:230px;overflow:auto;display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:13px}#log div{padding:5px 8px;border-radius:6px;background:var(--bg)}#log .me{opacity:.75}
+.sv{display:grid;grid-template-columns:62px 1fr 42px;gap:6px;align-items:center;font-size:12.5px}.svs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:3px 18px}
+.face{background:radial-gradient(ellipse at 50% 0,var(--stage2),var(--stage) 70%);border-radius:7px;padding:8px}#face{display:block;width:100%;max-height:250px}
+.f{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.f label{font-size:12px;color:var(--dim);display:block}.f input{width:100%}
+a{color:var(--red)}
+/* 2K 屏 100% 缩放时整体放大，不然字太小 */
+@media(min-width:1800px){body{zoom:1.25}}@media(min-width:2300px){body{zoom:1.55}}
+</style></head><body>
+<header><h1>灵眸控制台</h1>
+<button id="arm">上电</button><button id="stop" title="Esc">全部卸力</button>
+<span id="pills" class="row"></span><span class="dim" id="layers"></span>
+<a href="/demo" target="_blank" style="margin-left:auto">打开演示页</a><div id="msg" role="alert"></div></header>
+<main>
+<section class="card wide"><h2>模式（数字键 1–7）</h2><div class="modes" id="modes"></div></section>
+<section class="card"><h2>实时画面（真机的实际位置）</h2><div class="face"><div id="faceBox"></div></div></section>
+<section class="card"><h2>表情（非手动模式保持 4 秒）</h2><div class="grid" id="poses"></div>
+<label class="dim">强度 <span id="pkv">1</span><input id="pk" type="range" min="0.2" max="1" step="0.05" value="1"></label>
+<div class="row"><button id="pclear">清除手动层</button><button id="life">待机动作</button></div></section>
+<section class="card"><h2>视线（拖动，进入手动模式）</h2><div id="pad" aria-label="视线"><i id="dot"></i></div>
+<div class="row" style="margin-top:8px"><button id="center">回正前方</button><span class="dim">左右 <b id="lr"></b>° · 上下 <b id="ud"></b>°</span></div></section>
+<section class="card"><h2>戏台</h2><div class="row" style="margin-bottom:8px"><button data-g="opera" class="on">京剧</button><button data-g="anime">动漫</button>
+<button id="tour">巡演这一组</button><button id="ostop">停止</button></div>
+<div class="grid" id="acts"></div><label class="dim">强度 <span id="okv">1</span><input id="ok" type="range" min="0.2" max="1" step="0.05" value="1"></label>
+<div class="dim" id="beat"></div></section>
+<section class="card"><h2>语音</h2><div class="row"><span id="vst">—</span></div><div class="lv" style="margin:6px 0"><u id="vlv"></u><s id="vth"></s></div>
+<form id="sayf" class="row"><input id="say" placeholder="打字让它说话" style="flex:1" autocomplete="off"><button>发送</button></form>
+<div class="f" style="margin-top:8px"><div style="grid-column:span 3"><label for="mic">麦克风音量 <span id="micv"></span>（要大声才听得到就调高，削顶会识别不了）</label><input id="mic" type="range" min="0" max="150"></div>
+<div style="grid-column:span 2"><label for="vol">喇叭音量 <span id="volv"></span></label><input id="vol" type="range" min="0" max="100"></div>
+<div><label for="wake">唤醒词（空=不需要）</label><input id="wake" placeholder="小表"></div></div>
+<div id="log"></div></section>
+<section class="card"><h2>视觉</h2><img id="cam" alt="摄像头画面"><div class="row" style="margin:8px 0"><button id="prev">开画面</button><span id="cst" class="dim"></span></div>
+<div class="f"><div><label for="far">太远 (m)</label><input id="far" type="number" step="0.05"></div><div><label for="near">太近 (m)</label><input id="near" type="number" step="0.05"></div><div><label for="close">贴脸 (m)</label><input id="close" type="number" step="0.01"></div>
+<div><label for="gain">跟随比例</label><input id="gain" type="number" step="0.1"></div><div><label for="camera_fps">帧率</label><input id="camera_fps" type="number" step="1" min="3" max="15"></div>
+<div><label>&nbsp;</label><button id="flip">左右反向</button></div></div>
+<h2 style="margin-top:12px">表情模仿</h2><div class="row"><b id="expr">—</b><span class="dim" id="top"></span></div>
+<div class="f" style="margin-top:6px"><div><label for="mimic_gain">模仿幅度</label><input id="mimic_gain" type="number" step="0.1" min="0.3" max="2.5"></div>
+<div><label>&nbsp;</label><button id="mswap">左右互换</button></div><div><label>&nbsp;</label><button id="mcal">平静脸校准</button></div></div>
+<div class="dim" style="margin-top:6px">像照镜子：你闭左眼，它闭你看到的左边那只。对着镜头放松脸再点校准，眯眼、皱眉的误触发会少很多。</div>
+<div class="dim" style="margin-top:6px">帧率低一点摄像头没那么烫。不需要视觉的模式会自动关摄像头。</div></section>
+<section class="card wide"><h2>单个舵机（进入手动模式；下唇固定 90°，下巴两侧同步）</h2><div class="svs" id="svs"></div></section>
+</main>
+<script src="/face.js"></script>
+<script>
+let M,S,group="opera",dragging=false,touched=0;
+const PN={neutral:"平静",happy:"开心",sad:"难过",angry:"生气",surprised:"惊讶",fear:"害怕",disgust:"厌恶",bored:"无聊",annoyed:"不耐烦",interested:"感兴趣"};
+const ZN={bored:"无聊犯困",interested:"感兴趣",annoyed:"太近了，皱眉",fear:"贴脸，害怕"};
+const SN={hub:"控制进程",camera:"摄像头",vision:"跟踪",mimic:"模仿",voice:"语音",culture:"戏台"};
+const SV={LR:"眼球左右",UD:"眼球上下",TL:"上眼皮 L",TR:"上眼皮 R",BL:"下眼皮 L",BR:"下眼皮 R",LO:"眉外 L",LI:"眉内 L",RI:"眉内 R",RO:"眉外 R",JL:"下巴",LUL:"上唇 L",LUR:"上唇 R",CUL:"嘴角上下 L",CUR:"嘴角上下 R",CLL:"嘴角前后 L",CLR:"嘴角前后 R",TON:"舌头"};
+async function api(b){try{const r=await fetch("/api",{method:"POST",headers:{"Content-Type":"application/json","X-Head":"1"},body:JSON.stringify(b)});const d=await r.json().catch(()=>({}));$("msg").textContent=d.error||"";return d}catch(e){$("msg").textContent="连不上总控"}}
+function btn(p,html,fn){const b=document.createElement("button");b.innerHTML=html;b.onclick=fn;p.append(b);return b}
+function tab(g){group=g;document.querySelectorAll("[data-g]").forEach(b=>b.classList.toggle("on",b.dataset.g===g));$("acts").innerHTML="";
+ M.actions.filter(a=>a.group===g).forEach(a=>{const b=btn($("acts"),a.name,()=>api({op:"play",action:a.id,intensity:+$("ok").value}));b.dataset.a=a.id})}
+document.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>tab(b.dataset.g));
+$("arm").onclick=()=>api({op:"arm"});$("stop").onclick=()=>api({op:"estop"});
+$("ostop").onclick=()=>api({op:"stop"});$("tour").onclick=()=>api({op:"tour",group,intensity:+$("ok").value});
+$("pclear").onclick=()=>api({op:"clear_manual"});$("life").onclick=()=>api({op:"life",on:!S.hub.life});
+$("pk").oninput=e=>$("pkv").textContent=e.target.value;$("ok").oninput=e=>$("okv").textContent=e.target.value;
+$("sayf").onsubmit=e=>{e.preventDefault();const t=$("say").value.trim();if(t){api({op:"say",text:t});$("say").value=""}};
+$("vol").onchange=e=>api({op:"volume",percent:+e.target.value});$("vol").oninput=e=>$("volv").textContent=e.target.value+"%";
+$("mic").onchange=e=>api({op:"volume",percent:+e.target.value,mic:true});$("mic").oninput=e=>$("micv").textContent=e.target.value+"%";
+$("wake").onchange=e=>api({op:"settings",wake:e.target.value});
+$("mswap").onclick=()=>api({op:"settings",mimic_swap:!S.settings.mimic_swap});$("mcal").onclick=()=>api({op:"mimic_calibrate"});
+$("mimic_gain").onchange=e=>api({op:"settings",mimic_gain:+e.target.value});
+$("prev").onclick=()=>api({op:"preview",on:!S.preview});$("flip").onclick=()=>api({op:"settings",flip_x:!S.settings.flip_x});
+for(const k of["far","near","close","gain","camera_fps"])$(k).onchange=e=>api({op:"settings",[k]:+e.target.value});
+let last=0,want=null;
+function send(values){want={...want,...values};const n=Date.now();if(n-last<60)return;last=n;touched=n;const v=want;want=null;api({op:"servos",values:v})}
+function gaze(e){const r=$("pad").getBoundingClientRect(),x=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));send({LR:M.flags.lr_up_robot_left?x:1-x,UD:1-y})}
+$("pad").onpointerdown=e=>{dragging=true;$("pad").setPointerCapture(e.pointerId);gaze(e)};$("pad").onpointermove=e=>dragging&&gaze(e);$("pad").onpointerup=()=>dragging=false;
+$("center").onclick=()=>api({op:"servos",values:{LR:M.rest.LR,UD:M.rest.UD}});
+function pills(){const p=$("pills");p.textContent="";const add=(t,c)=>{const s=document.createElement("span");s.className="pill "+c;s.innerHTML="<i></i>";s.append(t);p.append(s)};
+ for(const[n,t]of Object.entries(SN)){const up=S.services[n];let c=up?"ok":"",l=t;if(n==="camera"&&up&&!S.camera.ok){c="warn";l="摄像头卡住"}if(n==="voice"&&up&&!S.voice.ready){c="warn";l="语音加载中"}add(l,c)}
+ const a=S.hub?S.hub.armed:[];add(a.length?`已上电 ${a.length}/3`:"未上电",a.length===3?"ok":a.length?"warn":"bad")}
+function frame(){if(!S)return;pills();const h=S.hub;const armed=h&&h.armed.length>0;
+ $("arm").classList.toggle("on",!!armed);$("arm").textContent=armed?"已上电":"上电";
+ document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.m===S.mode));
+ if(h){draw(h.u);$("layers").textContent="层："+h.layers.join(" < ");$("life").classList.toggle("on",h.life);$("life").textContent="待机动作："+(h.life?"开":"关");
+  $("lr").textContent=h.angles.LR??"—";$("ud").textContent=h.angles.UD??"—";
+  const x=M.flags.lr_up_robot_left?h.u.LR:1-h.u.LR;$("dot").style.left=x*100+"%";$("dot").style.top=(1-h.u.UD)*100+"%";
+  if(h.fault)$("msg").textContent=h.fault;
+  if(Date.now()-touched>500)for(const n of M.names){const i=$("s_"+n);if(i&&document.activeElement!==i){i.value=h.u[n];$("v_"+n).textContent=h.angles[n]??""}}}
+ const o=S.opera;$("beat").textContent=o&&o.playing?`在演：${M.actions.find(a=>a.id===o.playing).name} ${o.beat||""}${S.tour_left?` · 还有 ${S.tour_left} 段`:""}`:"";
+ document.querySelectorAll("#acts button").forEach(b=>b.classList.toggle("on",!!o&&b.dataset.a===o.playing));
+ const v=S.voice;$("vst").textContent=!v.ready?"语音服务没就绪":v.paused?"暂停听（只有打字能让它说话）":({idle:"在听","listening…":"听到你在说话…"}[v.status]||v.status);
+ if(v.ready){const m=Math.max((v.threshold||1)*2,1500);$("vlv").style.width=Math.min(100,v.rms/m*100)+"%";$("vth").style.left=Math.min(100,v.threshold/m*100)+"%"}
+ if(v.error)$("msg").textContent=v.error;
+ const L=$("log"),key=v.turns.length+":"+(v.turns.at(-1)?.reply||"");if(L.dataset.k!==key){L.dataset.k=key;L.textContent="";v.turns.slice().reverse().forEach(t=>{if(t.reply){const d=document.createElement("div");d.textContent=`[${t.emotion}] ${t.reply}`;L.append(d)}if(t.text){const d=document.createElement("div");d.className="me";d.textContent="你："+t.text;L.append(d)}})}
+ if(S.volume!=null&&document.activeElement!==$("vol")){$("vol").value=S.volume;$("volv").textContent=S.volume+"%"}
+ if(S.mic!=null&&document.activeElement!==$("mic")){$("mic").value=S.mic;$("micv").textContent=S.mic+"%"}
+ const c=S.camera,on=S.services.camera&&c.ok;if(on!==(camOn)){camOn=on;$("cam").src=on?"/cam?"+Date.now():""}
+ $("prev").textContent=S.preview?"关画面":"开画面";$("prev").classList.toggle("on",S.preview);
+ $("cst").textContent=c.note||(!S.services.camera?"摄像头关着":!c.ok?"画面卡住，重启中":c.face?`${c.dist.toFixed(2)} m · ${ZN[c.zone]} · ${c.fps} fps`:`没看到人 · ${c.fps} fps`);
+ for(const k of["far","near","close","gain","camera_fps"])if(document.activeElement!==$(k))$(k).value=S.settings[k];
+ $("expr").textContent=c.face?"你现在："+c.expr:"—";$("top").textContent=c.top.map(([k,v])=>k+" "+v).join(" · ")+(c.calibrated?"":"（还没校准）");
+ $("mswap").classList.toggle("on",S.settings.mimic_swap);if(document.activeElement!==$("mimic_gain"))$("mimic_gain").value=S.settings.mimic_gain;
+ if(document.activeElement!==$("wake"))$("wake").value=S.settings.wake;$("flip").classList.toggle("on",S.settings.flip_x);
+ if(S.message)$("msg").textContent=S.message}
+let camOn=null;
+addEventListener("keydown",e=>{if(e.target.tagName==="INPUT")return;if(e.key==="Escape")api({op:"estop"});const k=+e.key-1,m=Object.keys(M.modes);if(m[k])api({op:"mode",mode:m[k]})});
+addEventListener("keydown",e=>{if(e.key==="Escape"&&e.target.tagName==="INPUT")api({op:"estop"})});
+(async()=>{M=await(await fetch("/meta")).json();$("faceBox").innerHTML=FACE_SVG;skin("robot");draw(M.rest);
+ Object.entries(M.modes).forEach(([k,m])=>{const b=btn($("modes"),`<b>${m.name}</b><span>${m.note}</span>`,()=>api({op:"mode",mode:k}));b.dataset.m=k});
+ M.poses.forEach(p=>btn($("poses"),PN[p]||p,()=>api({op:"pose",pose:p,intensity:+$("pk").value})));tab("opera");
+ M.names.filter(n=>n!=="JR").forEach(n=>{const r=document.createElement("label");r.className="sv";r.innerHTML=`<span>${SV[n]||n}</span><input type="range" id="s_${n}" min="0" max="1" step="0.01"><span id="v_${n}"></span>`;$("svs").append(r);
+  r.querySelector("input").oninput=e=>send(n==="JL"?{JL:+e.target.value,JR:+e.target.value}:{[n]:+e.target.value})});
+ const es=new EventSource("/events");es.onmessage=e=>{S=JSON.parse(e.data)};es.onerror=()=>{$("msg").textContent="和总控的连接断了"};setInterval(frame,70)})();
+</script></body></html>

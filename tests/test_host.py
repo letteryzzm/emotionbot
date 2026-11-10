@@ -213,3 +213,33 @@ def test_cal_switch_only_on_edge():
     state["v"] = 0
     m.poll_cal()
     assert len(m.active) == len(m.servos)
+
+
+def test_center_offset_shifts_angle_within_limits(monkeypatch):
+    from head import actuators
+
+    monkeypatch.setitem(actuators.CENTERS, "UD", 110.0)
+    ud = actuators.BY_NAME["UD"]
+    assert ud.angle(ud.u(90)) == 110
+    assert ud.angle(1.0) == 160           # 不超出 config
+
+
+def test_eye_frames_stay_in_config_and_blink_closes():
+    from head.actuators import BY_NAME
+    from head.eye_motion import MOTIONS, eye_frames
+
+    assert set(MOTIONS) == set(EXPRESSIONS)
+    for name in MOTIONS:
+        for hold, speed, goal in eye_frames(name):
+            assert hold > 0 and speed >= 10
+            for n, v in goal.items():
+                a = BY_NAME[n]
+                assert min(a.a, a.b) <= v <= max(a.a, a.b)
+    closed = eye_frames("happy")[0][2]
+    assert (closed["TL"], closed["TR"], closed["BL"], closed["BR"]) == (90, 90, 90, 90)
+
+
+def test_lids_relax_unless_expression_sets_them():
+    from head.eye_motion import eye_pose
+
+    assert eye_pose("neutral")["TL"] == 146 and eye_pose("surprised")["TL"] == 160

@@ -2,7 +2,7 @@
 import glob
 import time
 
-from .actuators import ACTUATORS, BY_NAME, NAMES, to_angles
+from .actuators import ACTUATORS, BY_NAME, CENTERS, NAMES, to_angles
 
 
 def pico_ports():
@@ -68,6 +68,9 @@ class HeadClient:
     def rest(self):
         for board in self.links:
             self._send(board, "R")
+        # 固件的 R 不知道补偿，有实测中心的舵机再转一次
+        if CENTERS:
+            self.set({n: BY_NAME[n].u(BY_NAME[n].rest) for n in CENTERS})
 
     def center(self):
         for board in self.links:

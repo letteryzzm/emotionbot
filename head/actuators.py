@@ -9,6 +9,7 @@ u 的语义（装好后要逐个核对方向）：
   嘴唇 LUL/LUR/LLL/LLR: 上抬     嘴角上 CUL/CUR: 笑(1)↔撇嘴(0)
   嘴角下 CLL/CLR: 宽(1)↔窄(0)   舌头 TON: 上抬
 """
+import json
 import runpy
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,9 @@ from pathlib import Path
 import numpy as np
 
 FIRMWARE = Path(__file__).resolve().parent.parent / "firmware"
+# 实测中心：装配偏差的补偿，{名字: 角度}。没写的舵机中心是 90。由调试台"设为中心"写入
+CENTER_FILE = Path(__file__).resolve().parent / "centers.json"
+CENTERS = json.loads(CENTER_FILE.read_text()) if CENTER_FILE.exists() else {}
 BOARDS = ("eyes", "brows", "mouth")
 
 # 接线约定（docs/舵机接线与上电检查.html）。舵机名里的 L/R 不是统一的：按连杆方向反推，
@@ -37,10 +41,20 @@ class Actuator:
     rest: float
 
     def angle(self, u):
-        return self.a + float(np.clip(u, 0, 1)) * (self.b - self.a)
+        deg = self.a + float(np.clip(u, 0, 1)) * (self.b - self.a) + center(self.name) - 90
+        return float(np.clip(deg, min(self.a, self.b), max(self.a, self.b)))
 
     def u(self, angle):
         return (angle - self.a) / (self.b - self.a)
+
+
+def center(name):
+    return float(CENTERS.get(name, 90))
+
+
+def save_center(name, deg):
+    CENTERS[name] = float(deg)
+    CENTER_FILE.write_text(json.dumps(CENTERS, indent=2) + "\n")
 
 
 def _load():
