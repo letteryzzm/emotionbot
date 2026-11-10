@@ -10,7 +10,7 @@
 
 [看 Demo](#demo) · [运行入口](#运行入口) · [制作与联调资料](docs/资料导航.md) · [素材与版本说明](docs/项目版本与素材.md)
 
-> 2026-11-09 整理：本页覆盖 GitHub main 的感知管线与 T9 工作区后续的灵眸演示版。后者还有未提交代码，下文单独标明；从 GitHub 克隆后不会自动包含全部现场功能。
+> 2026-11-09 整合：原 T9 工作区的灵眸演示代码已纳入仓库，并与原 main 的感知管线合并。两套运行入口均保留；模型、现场环境和大文件仍需另行准备。
 
 ## Demo
 
@@ -38,7 +38,7 @@
 | 视觉交互 | 人脸位置与距离驱动视线和表情；表情模仿 | 依赖摄像头、FaceLandmarker 模型与实际标定 |
 | 统一控制 | 多来源动作合成、意图过期、手动接管、卸力与失联保护 | 没有舵机实际位置或电流反馈 |
 | T5AI | EB2 屏幕与双向 PCM 协议；已有板端传输实测 | 音质、回声消除和长期稳定性仍需现场验证 |
-| 情感识别研究 | FER / SER / TER 评测；远端有感知、融合、规则决策与运行时 | 研究管线与灵眸现场版尚未合并成统一发行版 |
+| 情感识别研究 | FER / SER / TER 评测；包含感知、融合、规则决策与运行时 | 研究管线与灵眸现场版保留各自运行入口，未统一成一套控制流程 |
 
 ## 系统怎么工作
 
@@ -73,9 +73,9 @@ uv pip install -e '.[dev]'
 
 输出 `outputs/expressions.png`，不连接硬件。Windows 使用 `.venv\Scripts\python.exe` 替换解释器路径。
 
-### 灵眸演示版：T9 本地扩展
+### 灵眸演示版
 
-这一版包含 `camera/`、`culture/`、`lingmou/`、`head/hub*.py` 和 `firmware_t5/`，目前尚未提交到远端 main。
+演示代码位于 `camera/`、`culture/`、`lingmou/`、`head/hub*.py` 和 `firmware_t5/`，已随仓库保存。
 
 ```bash
 # 2D 控制台：默认不打开串口
@@ -91,11 +91,11 @@ uv pip install -e '.[dev]'
 
 现场总控入口是 `python -m lingmou.server`（端口 `8800`，演示页 `/demo`）。它依赖 ROG/Linux 的摄像头目录、独立语音环境和服务配置，启动时会拉起子进程；请按[灵眸戏台与现场部署](docs/灵眸戏台.md)复原环境。新机器先用上面的独立预览入口。
 
-### 多模态研究管线：GitHub main
+### 多模态研究管线
 
-远端 main 的 `perception/`、`agent/`、`app/` 提供另一条链路：音频 / 人脸 / 文本 → 情感融合与矛盾检测 → 规则策略 → 表情与 TTS。这些目录尚不在当前 T9 工作树中。
+`perception/`、`agent/`、`app/` 提供另一条链路：音频 / 人脸 / 文本 → 情感融合与矛盾检测 → 规则策略 → 表情与 TTS，现已与演示代码保存在同一仓库。
 
-在包含这些模块的独立克隆中，按[远端安装说明](https://github.com/letteryzzm/emotionbot/blob/21aab03e8e861636405590df0e3fdff7665b93ec/README.md#实时闭环黑客松)安装依赖，然后运行 `python -m app.run --stub --sim`，访问 `http://127.0.0.1:8000`。完整模型运行与队友接口见[实时管道说明](https://github.com/letteryzzm/emotionbot/blob/21aab03e8e861636405590df0e3fdff7665b93ec/docs/实时管道-队友接口.md)。
+基础依赖安装后，运行 `.venv/bin/python -m app.run --stub --sim --source none --no-face --no-tts` 预览仪表盘，访问 `http://127.0.0.1:8000`；此命令不打开麦克风、摄像头或串口。完整模型环境使用 [Linux 安装脚本](scripts/setup_env.sh)或 [Windows 安装脚本](scripts/setup_env.ps1)，接口见[实时管道说明](docs/实时管道-队友接口.md)。`app.run` 与 `camera.web` 默认都用 8000 端口，真机模式也会占用串口；两套运行入口分开启动。
 
 ### 接真机
 
@@ -120,9 +120,9 @@ uv pip install -e '.[dev]'
 | 路径 | 用途 |
 |---|---|
 | `firmware/`、`head/` | Pico 固件、动作空间、电脑端控制 |
-| `camera/`、`culture/`、`lingmou/` | 本地演示扩展：视觉、戏台、总控 |
-| `firmware_t5/` | 本地 T5 EB2 固件扩展，完整 SDK 另行准备 |
-| `perception/`、`agent/`、`app/` | 远端 main 的多模态研究管线 |
+| `camera/`、`culture/`、`lingmou/` | 灵眸演示：视觉、戏台、总控 |
+| `firmware_t5/` | T5 EB2 固件扩展，完整 SDK 另行准备 |
+| `perception/`、`agent/`、`app/` | 多模态研究管线 |
 | `scripts/`、`tests/` | 调试、渲染、CAD 辅助脚本与自动化测试 |
 | `pcb/`、`print_package/` | 板卡工程与打印资料；完整打印包留外置盘 |
 | `emo_bench/` | 情感识别测评代码与结果摘要 |

@@ -112,13 +112,13 @@ def test_servo_step_guard():
     assert sent[:5] == ["V 30", "O CUR", "O JL JR", "O JL", "O JR"] and sent[5:] == ["X"]
 
 
-def test_servo_check_moves_jaw_together():
+def test_servo_check_moves_jaw_together(monkeypatch):
     import importlib.util
     spec = importlib.util.spec_from_file_location("servo_check", ROOT / "scripts/servo_check.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     m.SWING, m.SPEED = 1, 1e9
-    m.time.sleep = lambda s: None
+    monkeypatch.setattr(m, "time", types.SimpleNamespace(sleep=lambda s: None))
     sent = []
 
     class C:

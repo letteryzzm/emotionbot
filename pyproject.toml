@@ -6,17 +6,21 @@ requires-python = ">=3.11,<3.13"
 dependencies = ["numpy", "pyserial", "matplotlib"]
 
 [project.optional-dependencies]
-vision = ["mediapipe", "opencv-python"]
+vision = ["mediapipe", "opencv-python", "emotiefflib", "timm"]
+audio = ["sounddevice", "soundfile"]
+# emotion2vec 模型由 FunASR 加载，不是独立的 PyPI 包。
+realtime = ["funasr", "transformers==4.57.6", "edge-tts", "miniaudio"]
 dev = ["pytest", "mpremote"]
 
 [tool.setuptools]
-packages = ["head", "camera", "culture", "lingmou"]
+packages = ["head", "camera", "culture", "lingmou", "perception", "agent", "app"]
 
 [tool.setuptools.package-data]
 camera = ["web.html"]
-head = ["hub.html"]
+head = ["hub.html", "centers.json"]
 culture = ["page.html", "face.js", "samples/*"]
 lingmou = ["console.html", "demo.html"]
+app = ["dashboard.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "camera"]

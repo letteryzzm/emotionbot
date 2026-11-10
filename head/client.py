@@ -19,22 +19,50 @@ class HeadClient:
             print(f"[head] 没找到这些板: {sorted(missing)}，对应舵机的命令会被忽略")
 
     @staticmethod
+    def _candidate_ports():
+        from serial.tools import list_ports
+
+        ports = list(list_ports.comports())
+        # Raspberry Pi 的 VID 是 0x2E8A，先试这些，避免在虚拟串口上逐个等超时
+        pico = [p.device for p in ports if p.vid == 0x2E8A]
+        rest = [p.device for p in ports if p.vid != 0x2E8A]
+        # Mac/Linux 的固定路径优先（Linux by-id 能避开机械臂/摄像头的 ttyACM）
+        found = pico_ports()
+        for p in pico + rest:
+            if p not in found:
+                found.append(p)
+        return found
+
+    @staticmethod
     def _discover(ports, baud):
         import serial
 
         links = {}
-        for p in ports or pico_ports():
-            s = serial.Serial(p, baud, timeout=0.5)
+        wanted = {a.board for a in ACTUATORS}
+        for p in ports if ports else HeadClient._candidate_ports():
+            if set(links) >= wanted:  # 三块都找到了，不用再试后面的口
+                break
+            try:
+                s = serial.Serial(p, baud, timeout=0.5)
+            except serial.SerialException:
+                continue  # 端口被别的程序占用 / 不是串口
             time.sleep(0.1)
             s.reset_input_buffer()
-            s.write(b"?\n")
-            for _ in range(5):  # 跳过 MicroPython 启动时可能残留的输出
-                line = s.readline().decode(errors="ignore").strip()
-                if line.startswith("ROLE "):
-                    links[line.split()[1]] = s
-                    break
-            else:
+            # Pico 刚插上时可能还在启动；1.5s 内反复问，比只问一次稳
+            role, deadline = None, time.monotonic() + 1.5
+            while role is None and time.monotonic() < deadline:
+                s.write(b"?\n")
+                for _ in range(4):  # 跳过 MicroPython 启动时可能残留的输出
+                    line = s.readline().decode(errors="ignore").strip()
+                    if line.startswith("ROLE "):
+                        role = line.split()[1]
+                        break
+                if role is None:
+                    time.sleep(0.05)
+            if role is None or role in links:  # 同角色重复出现时保留第一个
                 s.close()
+            else:
+                links[role] = s
         return links
 
     def _send(self, board, line):
