@@ -19,3 +19,7 @@ print_package/*
 emo_bench/report/
 emo_bench/results/*
 !emo_bench/results/*.md
+# 演示原件留 T9；README 仅引用 docs/media/ 的精选小图和短片
+/ppt/*
+!/ppt/build_deck.js
+/*.pptx
