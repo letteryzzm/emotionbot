@@ -37,6 +37,8 @@ MAX_STEP = 5
 JAW_SKEW = 5   # JL + JR 偏离 180 的上限，两个 MG996R 不能互相顶
 SWING_AMPS = (15, 30)
 BOARDS = ("eyes", "brows", "mouth")
+# 现场故障隔离：修复并完成单轴检查后再解除，90° 不是机械安全位。
+BLOCKED = {"EXA": "未接舵机的备用通道", "LLR": "2026-11-11：90° 通电嗡嗡响，等待机械排查"}
 
 # 从下到上，和 docs/舵机接线与上电检查.html 的嘴部图一致
 GROUPS = [
@@ -152,7 +154,7 @@ class Bench:
     vision = staticmethod(read_vision)
 
     def __init__(self, links, log=default_log, settle=0.4, pace=1.0, rediscover=None,
-                 library_path=DEFAULT_PATH, mode="hardware"):
+                 library_path=DEFAULT_PATH, mode="hardware", blocked=None):
         self.links, self.log, self.settle, self.pace = links, log, settle, pace
         self.rediscover = rediscover
         self.lock = threading.Lock()
@@ -165,6 +167,7 @@ class Bench:
         self.angles = {}
         self.error = ""
         self.mode = mode
+        self.blocked = dict(BLOCKED if blocked is None else blocked)
         self.library = PoseLibrary(library_path, mode=mode)
         self.preview = None
         for board in list(links):
@@ -173,7 +176,17 @@ class Bench:
     def _record(self, kind, **kw):
         self.log({"t": time.strftime("%Y-%m-%d %H:%M:%S"), "type": kind, **kw})
 
+    def _check_enabled(self, names):
+        for n in names:
+            if n in self.blocked:
+                raise Refused(f"{n} 已禁用：{self.blocked[n]}")
+
     def _ask(self, board, line):
+        parts = line.split()
+        if parts[0] in ("S", "O"):
+            self._check_enabled(p.split("=")[0] for p in parts[1:])
+        elif parts[0] in ("R", "C"):
+            self._check_enabled(n for n, a in BY_NAME.items() if a.board == board)
         link = self.links.get(board)
         if link is None:
             raise Refused(f"{board} 板不在线")
@@ -234,6 +247,9 @@ class Bench:
         return self.job is not None and self.job.is_alive()
 
     def _start(self, legs, additive=False, done=None, dwell=0.2):
+        # 在第一块板收到动作前检查整段计划，避免执行到一半才遇到禁用通道。
+        for leg in legs:
+            self._check_enabled(leg.goal if isinstance(leg, Frame) else leg)
         self.stop.clear()
         self.job = threading.Thread(target=self._legs, args=(legs, additive, done, dwell), daemon=True)
         self.job.start()
@@ -400,6 +416,7 @@ class Bench:
             self._start(legs)
 
     def power(self, names):
+        self._check_enabled(names)
         if set(names) == self.powered:
             return self.home()
         with self.lock:
@@ -430,6 +447,7 @@ class Bench:
 
     def hold(self, names):
         """让这些舵机一直保持在 90°，不受通别的组影响。S 90 只是通电，跟踪值已是 90 就不动"""
+        self._check_enabled(names)
         with self.lock:
             if self._busy():
                 raise Refused("上一个动作还没结束")
@@ -462,6 +480,7 @@ class Bench:
             self._record("note", servo=name, status="info", text=f"实测中心设为 {deg:g}°")
 
     def move(self, deltas):
+        self._check_enabled(deltas)
         with self.lock:
             if self._busy():
                 raise Refused("上一个动作还没结束")
@@ -611,6 +630,7 @@ class Bench:
 
     def enable_group(self, names):
         """加入一组，已有电机保持原角度；不用会卸掉其他电机的 O 命令。"""
+        self._check_enabled(names)
         with self.lock:
             if self._busy():
                 raise Refused("上一个动作还没结束")
@@ -640,6 +660,7 @@ class Bench:
             if self._busy():
                 raise Refused("请等动作停止后再保存")
             active = self.powered | self.held
+            self._check_enabled(active)
             if not active:
                 raise Refused("请先加入电机组并调整姿态")
             for board in {BY_NAME[n].board for n in active}:
@@ -654,6 +675,7 @@ class Bench:
         """只加载预览。不会打开串口、通电或移动。"""
         with self.lock:
             goal = self.library.resolve(label, intensity)
+            self._check_enabled(goal)
             self._check_ranges(goal)
             self.preview = {"label": label_key(label), "intensity": intensity, "angles": goal,
                             "unverified": sorted(set(goal) - load_verified(self.log_path).keys()),
@@ -678,6 +700,7 @@ class Bench:
             if revision is not None and revision != self.library.data["revision"]:
                 raise Refused("表情库已更新，请重新加载预览")
             goal = self.library.resolve(label, intensity)
+            self._check_enabled(goal)
             self._check_ranges(goal)
             outside = (self.powered | self.held) - goal.keys()
             if outside:
@@ -717,6 +740,7 @@ class Bench:
             "tracking": self.tracking,
             "error": self.error,
             "mode": self.mode,
+            "blocked": dict(self.blocked),
             "library": self.library.summary(),
             "preview": self.preview,
         }
@@ -740,7 +764,7 @@ input.w{width:72px}.st{padding:3px 0;font-size:14px}.st.done{color:var(--dim)}.s
 .primary{background:var(--ok);color:#fff;border-color:var(--ok)}#cal-status{line-height:1.9;margin:10px 0}#cal-preview{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--bg);border-radius:6px}#mode{font-weight:600;color:var(--on)}summary{cursor:pointer}a{color:var(--ok)}.head{flex-wrap:wrap}
 </style></head><body>
 <header><h1>舵机调试台</h1><span class="dim" id="st"></span><button id="stop">全部卸力 (Esc)</button></header>
-<main><div id="alarm"></div><div id="msg"></div>
+<main><div id="alarm"></div><div id="blocked" class="new"></div><div id="msg"></div>
 <div class="card" id="calibration"><div class="head"><b>人工标定表情库</b><span id="mode"></span></div>
 <p class="dim">① 下方逐组“加入标定”，调整 ±1° / ±5°，其余组保持原姿态。<br>② 先保存 neutral 基准，再调整并保存其余六类；每类使用同一组通道。<br>③ 加载只预览；点击重放才执行。这里的角度是控制信号，不是位置传感器读数。</p>
 <div id="cal-status" class="dim"></div>
@@ -798,6 +822,7 @@ function render(){
   renderCalibration();
   $('st').textContent=`在线: ${S.boards.join(' ')||'无'} · 通电: ${S.powered.join(' ')||'无'} · 保持: ${S.held.join(' ')||'无'}${S.busy?' · 动作中':''}`;
   $('alarm').textContent=S.error||'';
+  $('blocked').textContent=Object.entries(S.blocked||{}).filter(([n])=>n!=='EXA').map(([n,reason])=>`${n} 已锁定：${reason}。不会通电或参与重放。`).join(' ');
   const T=S.tracking;$('tk').textContent=T?'关闭视觉跟踪':'开启视觉跟踪';$('tk').disabled=S.busy&&!T;
   $('tks').textContent=T?`${T.face?'看到人脸':'没看到人脸'} · LR ${T.deg}° · 范围 ${T.lo}–${T.hi}°`:'';
   if(!$('en').options.length)$('en').innerHTML=S.expressions.map(n=>`<option>${n}</option>`).join('');
@@ -813,8 +838,11 @@ function render(){
   document.querySelectorAll('[data-sw]').forEach(b=>b.disabled=S.busy||!some(b.dataset.sw)||S.powered.some(n=>!S.groups[b.dataset.sw].names.includes(n)));
   document.querySelectorAll('[data-hold]').forEach(b=>b.disabled=S.busy||!some(b.dataset.hold));
   document.querySelectorAll('[data-center]').forEach(b=>b.disabled=S.mode==='sim'||S.busy||!S.powered.includes(b.dataset.center));
-  document.querySelectorAll('[data-enable]').forEach(b=>{b.disabled=S.busy||whole(b.dataset.enable);b.textContent=whole(b.dataset.enable)?'已加入标定':'加入标定 · 保留其他组'});
-  document.querySelectorAll('[data-power],[data-solo]').forEach(b=>b.disabled=S.busy)}
+  const blockedGroup=i=>S.groups[i].names.some(n=>S.blocked?.[n]);
+  document.querySelectorAll('[data-enable]').forEach(b=>{const off=blockedGroup(b.dataset.enable);b.disabled=S.busy||off||whole(b.dataset.enable);b.textContent=off?'含禁用通道':whole(b.dataset.enable)?'已加入标定':'加入标定 · 保留其他组'});
+  document.querySelectorAll('[data-power]').forEach(b=>b.disabled=S.busy||blockedGroup(b.dataset.power));
+  document.querySelectorAll('[data-solo]').forEach(b=>b.disabled=S.busy||!!S.blocked?.[b.dataset.solo]);
+  document.querySelectorAll('[data-m]').forEach(b=>{if(S.blocked?.[b.dataset.m])b.disabled=true})}
 function plan(g,amp){return g.names.filter(n=>S.powered.includes(n)).map(n=>{const[l,h]=S.limits[n],c=v=>Math.min(h,Math.max(l,v)),d=S.dirs[n];m=S.centers[n];return `${n}: ${c(m+d*amp)} → ${m} → ${c(m-d*amp)} → ${m}`}).join('\n')}
 document.addEventListener('click',e=>{const d=e.target.dataset;if(!d)return;
   if(d.enable!==undefined)api({op:'enable_group',names:S.groups[d.enable].names});

@@ -39,7 +39,8 @@ def bench(tmp_path):
     links = {b: FakeLink(b) for b in ("eyes", "brows", "mouth")}
     logged = []
     b = ts.Bench(links, log=logged.append, settle=0, pace=0,
-                 library_path=tmp_path / "expressions.json", mode="sim")
+                 library_path=tmp_path / "expressions.json", mode="sim",
+                 blocked={"EXA": "未接通道"})  # 原有通用控制测试不依赖现场故障状态。
     b.log_path = tmp_path / "tune_log.jsonl"
     b.logged = logged
     return b
@@ -397,6 +398,38 @@ def test_hold_cannot_energize_disabled_channel(bench):
     with pytest.raises(ts.Refused):
         bench.hold(["EXA"])
     assert not sent(bench, "mouth")
+
+
+@pytest.mark.parametrize("action", [lambda b: b.power(["LLR"]),
+                                    lambda b: b.power(["LLL", "LLR"]),
+                                    lambda b: b.enable_group(["LLL", "LLR"]),
+                                    lambda b: b.hold(["LLR"]),
+                                    lambda b: b.move({"LLR": 1}),
+                                    lambda b: b._ask("mouth", "S TON=90 LLR=90"),
+                                    lambda b: b._ask("mouth", "O LLR"),
+                                    lambda b: b._ask("mouth", "R"),
+                                    lambda b: b._start([{"UD": 120}, {"LLR": 90}])])
+def test_fault_quarantine_rejects_before_any_motor_write(bench, action):
+    bench.blocked = dict(ts.BLOCKED)
+    with pytest.raises(ts.Refused, match="LLR|EXA"):
+        action(bench)
+    assert all(not sent(bench, board) for board in ts.BOARDS)
+
+
+def test_saved_pose_cannot_bypass_quarantine_and_release_still_works(bench):
+    bench.enable_group(["LLL", "LLR"])
+    bench.save_expression("neutral", revision=0)
+    bench.blocked = dict(ts.BLOCKED)
+    before = {board: list(link.sent) for board, link in bench.links.items()}
+    for action in (lambda: bench.load_expression("neutral"), lambda: bench.emotion("neutral"),
+                   lambda: bench.save_expression("neutral", revision=1)):
+        with pytest.raises(ts.Refused, match="LLR"):
+            action()
+    assert before == {board: link.sent for board, link in bench.links.items()}
+    bench.relax()
+    assert all(sent(bench, board)[-1] == "X" for board in ts.BOARDS)
+    bench.enable_group(["TON"])
+    assert bench.powered == {"TON"}
 
 
 @pytest.mark.parametrize("servo,lo,hi", [("EXA", 80, 100), ("TON", float("nan"), 100),
