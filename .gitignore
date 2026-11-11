@@ -9,6 +9,7 @@ outputs/
 *.zip
 .DS_Store
 .env
+/calibration/*.lock
 # 打印文件：只放给协作者补打的小包，完整打印包在 GitHub Release
 !print_package/
 print_package/*

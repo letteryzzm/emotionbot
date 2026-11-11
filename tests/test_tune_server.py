@@ -35,10 +35,12 @@ class FakeLink:
 
 
 @pytest.fixture
-def bench():
+def bench(tmp_path):
     links = {b: FakeLink(b) for b in ("eyes", "brows", "mouth")}
     logged = []
-    b = ts.Bench(links, log=logged.append, settle=0, pace=0)
+    b = ts.Bench(links, log=logged.append, settle=0, pace=0,
+                 library_path=tmp_path / "expressions.json", mode="sim")
+    b.log_path = tmp_path / "tune_log.jsonl"
     b.logged = logged
     return b
 
@@ -116,6 +118,151 @@ def test_pose_records_powered_only(bench):
     bench.move({"TON": 5})
     bench.pose("舌头下", "")
     assert bench.logged[-1]["steps"] == ["S TON=95"]
+
+
+def test_add_group_keeps_previous_pose_and_power(bench):
+    bench.enable_group(["TON"])
+    bench.move({"TON": 5})
+    bench.enable_group(["LI", "RI"])
+    assert bench.powered == {"TON", "LI", "RI"}
+    assert bench.angles["TON"] == 95
+    assert not any(cmd.startswith(("O", "X")) for board in ts.BOARDS for cmd in sent(bench, board))
+    bench.home(names=["LI", "RI"])
+    finish(bench)
+    assert bench.angles["TON"] == 95
+
+
+def calibrated(bench):
+    bench.enable_group(["TON"])
+    bench.enable_group(["UD"])
+    bench.links["eyes"].ang["UD"] = 120
+    bench.save_expression("neutral", revision=0)
+    bench.move({"TON": 5})
+    bench.move({"UD": 5})
+    bench.save_expression("happy", revision=1, title="笑", text="测试")
+
+
+def test_preview_has_no_serial_io_and_raw_angles_replay_once(bench):
+    calibrated(bench)
+    before = {b: list(link.sent) for b, link in bench.links.items()}
+    bench.load_expression("happy", 0.5)
+    assert bench.preview["angles"] == {"TON": 92.5, "UD": 122.5}
+    assert before == {b: link.sent for b, link in bench.links.items()}
+    bench.emotion("happy", intensity=0.5, transition=0.2)
+    finish(bench)
+    assert bench.angles["UD"] == 122.5  # 不再加 UD 的 +30° 中心补偿
+    assert bench.angles["TON"] == 92.5
+    assert not bench.error
+
+
+def test_hold_returns_to_calibrated_neutral(bench):
+    calibrated(bench)
+    bench.emotion("happy", transition=0.2, hold=0)
+    finish(bench)
+    assert bench.angles["UD"] == 120
+    assert bench.angles["TON"] == 90
+    assert bench.logged[-1]["type"] == "replay"
+
+
+def test_busy_save_and_external_power_rejected(bench):
+    calibrated(bench)
+    bench.enable_group(["LR"])
+    with pytest.raises(ts.Refused, match="基准之外"):
+        bench.emotion("happy")
+    bench.relax()
+    bench.pace = 1
+    bench.emotion("happy", transition=10)
+    try:
+        with pytest.raises(ts.Refused, match="停止"):
+            bench.save_expression("happy", revision=2)
+        with pytest.raises(ts.Refused, match="当前有动作"):
+            bench.emotion("neutral")
+    finally:
+        bench.relax()
+        finish(bench)
+    assert all(sent(bench, b)[-1] == "X" for b in ts.BOARDS)
+    assert not bench.powered
+    assert not any(row["type"] == "replay" for row in bench.logged)
+
+
+def test_replay_rejects_offline_board_before_any_motor_write(bench):
+    calibrated(bench)
+    bench.relax()
+    bench.links.pop("eyes")
+    before = len(sent(bench, "mouth"))
+    with pytest.raises(ts.Refused, match="不在线"):
+        bench.emotion("happy")
+    assert len(sent(bench, "mouth")) == before
+
+
+def test_replay_respects_new_measured_range(bench):
+    calibrated(bench)
+    bench.log_path.write_text('{"type":"range","servo":"TON","lo":85,"hi":92}\n')
+    with pytest.raises(ts.Refused, match="实测范围"):
+        bench.emotion("happy")
+
+
+def test_transition_caps_steps_and_preserves_paired_jaw():
+    frames = ts.Bench._transition({"JL": 90, "JR": 90}, {"JL": 30, "JR": 150}, 0.2)
+    last = {"JL": 90, "JR": 90}
+    for f in frames:
+        assert abs(f.goal["JL"] - last["JL"]) <= 5
+        assert f.goal["JL"] + f.goal["JR"] == 180
+        last = f.goal
+    assert sum(f.hold for f in frames) == pytest.approx(0.6)
+
+
+def test_http_save_restart_preview_and_label_call(bench):
+    import json
+    import threading
+    from contextlib import contextmanager
+    from http.client import HTTPConnection
+    from http.server import ThreadingHTTPServer
+
+    @contextmanager
+    def running(b):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), ts.make_handler(b))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        def request(body, method="POST", path="/api", header=True):
+            conn = HTTPConnection(*server.server_address, timeout=2)
+            try:
+                conn.request(method, path, json.dumps(body), {"X-Head": "1"} if header else {})
+                response = conn.getresponse()
+                return response.status, json.loads(response.read())
+            finally:
+                conn.close()
+        try:
+            yield request
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
+    with running(bench) as call:
+        for body in ({"op": "enable_group", "names": ["TON"]},
+                     {"op": "save_expression", "label": "neutral", "revision": 0},
+                     {"op": "move", "deltas": {"TON": 5}},
+                     {"op": "save_expression", "label": "happy", "revision": 1}):
+            code, result = call(body)
+            assert code == 200, result
+        assert call({}, method="GET", path="/expressions.json")[1]["revision"] == 2
+        assert call([1, 2])[0] == 400
+        assert call({"op": "typo"})[0] == 400
+        assert call({"op": "state"}, header=False)[0] == 403
+
+    restored = ts.Bench({b: FakeLink(b) for b in ts.BOARDS}, log=lambda row: None, settle=0, pace=0,
+                        library_path=bench.library.path, mode="sim")
+    restored.log_path = bench.log_path
+    with running(restored) as call:
+        code, result = call({"op": "load_expression", "label": "happy"})
+        assert code == 200 and result["state"]["preview"]["angles"] == {"TON": 95}
+        assert all(set(link.sent) == {"G"} for link in restored.links.values())
+        assert call({"op": "emotion", "label": "fear"})[0] == 400
+        assert call({"op": "emotion", "label": "happy", "revision": 1})[0] == 400
+        assert call({"op": "emotion", "label": "happy", "intensity": 0.5})[0] == 200
+        finish(restored)
+        assert call({}, method="GET", path="/state")[1]["angles"]["TON"] == 92.5
 
 
 def moves(bench, board="mouth"):
@@ -226,6 +373,7 @@ def test_hold_refuses_off_90(bench):
 
 
 def test_center_shifts_home_and_swing(bench, monkeypatch):
+    bench.mode = "hardware"  # 仍是假串口；验证真机模式的中心保存路径。
     saved = {}
     monkeypatch.setattr(ts, "center", lambda n: saved.get(n, 90.0))
     bench.save_center = lambda n, d: saved.__setitem__(n, d)
@@ -237,6 +385,26 @@ def test_center_shifts_home_and_swing(bench, monkeypatch):
     bench.swing(15)
     finish(bench)
     assert moves(bench, "eyes")[-4:] == ["S UD=120", "S UD=105", "S UD=90", "S UD=105"]
+
+
+def test_sim_never_changes_real_center_file(bench):
+    bench.enable_group(["UD"])
+    with pytest.raises(ts.Refused, match="仿真"):
+        bench.set_center("UD")
+
+
+def test_hold_cannot_energize_disabled_channel(bench):
+    with pytest.raises(ts.Refused):
+        bench.hold(["EXA"])
+    assert not sent(bench, "mouth")
+
+
+@pytest.mark.parametrize("servo,lo,hi", [("EXA", 80, 100), ("TON", float("nan"), 100),
+                                      ("TON", 100, 90), ("TON", 0, 180)])
+def test_measured_ranges_reject_invalid_input(bench, servo, lo, hi):
+    with pytest.raises((ts.Refused, ts.PoseError)):
+        bench.set_range(servo, lo, hi)
+    assert not bench.logged
 
 
 def test_power_walks_to_center(bench, monkeypatch):

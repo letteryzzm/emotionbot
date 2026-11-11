@@ -1,6 +1,7 @@
 """网页调试台：逐组通电、小步转动、记录现象。写入 outputs/tune_log.jsonl，和 tune.py 同一份日志。
 
-  .venv/bin/python scripts/tune_server.py        # 只听 127.0.0.1:8770
+  .venv/bin/python scripts/tune_server.py --sim  # 先用仿真练习保存与重放
+  .venv/bin/python scripts/tune_server.py        # 真机，只听 127.0.0.1:8770
 
 运行时独占三块 Pico 的串口，不要同时跑 tune.py / servo_step.py。
 启动时只读角度，不让舵机动，也不卸力。
@@ -8,8 +9,10 @@
 每秒检查一次串口。USB 断开时 Pico 可能靠 5V 继续跑，舵机还在受力，
 所以板子重新出现时先发 X。
 """
+import argparse
 import glob
 import json
+import math
 import sys
 import threading
 import time
@@ -25,6 +28,7 @@ from camera.behavior import gaze_to_u  # noqa: E402
 from head.expressions import EXPRESSIONS, expression  # noqa: E402
 from head.eye_motion import EYES, eye_frames, eye_pose  # noqa: E402
 from head.hub import load_verified  # noqa: E402
+from head.pose_library import DEFAULT_PATH, PoseError, PoseLibrary, label_key, number, validate_angles  # noqa: E402
 
 LOG = ROOT / "outputs" / "tune_log.jsonl"
 PORT = 8770
@@ -124,7 +128,12 @@ def discover(skip=()):
     for p in glob.glob("/dev/serial/by-id/*MicroPython*"):
         if p in skip:
             continue
-        s = serial.Serial(p, 115200, timeout=0.5)
+        try:
+            s = serial.Serial(p, 115200, timeout=0.5, write_timeout=0.5, exclusive=True)
+        except serial.SerialException as e:
+            for link in links.values():
+                link.close()
+            raise Refused(f"串口不可用 {p}；请先关闭其他控制进程：{e}") from e
         time.sleep(0.1)
         s.reset_input_buffer()
         s.write(b"?\n")
@@ -142,7 +151,8 @@ class Bench:
     log_path = LOG
     vision = staticmethod(read_vision)
 
-    def __init__(self, links, log=default_log, settle=0.4, pace=1.0, rediscover=None):
+    def __init__(self, links, log=default_log, settle=0.4, pace=1.0, rediscover=None,
+                 library_path=DEFAULT_PATH, mode="hardware"):
         self.links, self.log, self.settle, self.pace = links, log, settle, pace
         self.rediscover = rediscover
         self.lock = threading.Lock()
@@ -154,6 +164,9 @@ class Bench:
         self.held = set()      # 用户要求一直保持的舵机，只有全部卸力才放开
         self.angles = {}
         self.error = ""
+        self.mode = mode
+        self.library = PoseLibrary(library_path, mode=mode)
+        self.preview = None
         for board in list(links):
             self._read(board)
 
@@ -186,7 +199,15 @@ class Bench:
 
     def _read(self, board):
         reply = self._ask(board, "G")
-        got = {k: float(v) for k, v in (kv.split("=") for kv in reply.split()[1:])}
+        try:
+            if not reply.startswith("A "):
+                raise ValueError(reply)
+            got = {k: float(v) for k, v in (kv.split("=") for kv in reply.split()[1:])}
+            expected = {n for n, a in BY_NAME.items() if a.board == board}
+            if set(got) != expected or not all(math.isfinite(v) for v in got.values()):
+                raise ValueError(reply)
+        except ValueError as e:
+            raise Refused(f"{board} 角度回报无效：{reply}") from e
         self.angles.update(got)
         return got
 
@@ -249,7 +270,7 @@ class Bench:
                         self._read(board)
             if done:
                 done()
-        except Refused as e:
+        except (Refused, OSError, ValueError) as e:
             self.error = str(e)
 
     def expr(self, name, intensity):
@@ -342,16 +363,17 @@ class Bench:
             self.powered = set()
             self._record("cmd", board="all", cmd="放开，只留保持的舵机", reply="OK", angles=self.angles)
 
-    def home(self):
+    def home(self, names=None):
         """已通电的舵机慢速回 90°。不用 O，O 是瞬跳"""
         with self.lock:
             if self._busy():
                 raise Refused("上一个动作还没结束")
-            if not self.powered:
+            active = self.powered if names is None else set(names)
+            if not active or not active <= self.powered:
                 raise Refused("没有通电的舵机")
             # 一条 S 只能发给一块板，所以按组走
-            self._start([{n: center(n) for n in g if n in self.powered} for _, g in GROUPS
-                         if self.powered & set(g)])
+            self._start([{n: center(n) for n in g if n in active} for _, g in GROUPS
+                         if active & set(g)])
 
     def swing(self, amp):
         """90 → +A → 90 → -A → 90。+ 是 config 里 a 到 b 的方向，所以成对舵机自动镜像；超范围的截断"""
@@ -411,6 +433,8 @@ class Bench:
         with self.lock:
             if self._busy():
                 raise Refused("上一个动作还没结束")
+            if not names or any(n not in BY_NAME or n == "EXA" for n in names):
+                raise Refused("未知或禁用的电机通道")
             if len({BY_NAME[n].board for n in names}) != 1:
                 raise Refused("一次只能保持同一块板的舵机")
             if any(abs(self.angles[n] - 90) > 0.5 for n in names):
@@ -427,6 +451,8 @@ class Bench:
     def set_center(self, name):
         """把当前角度存成这个舵机的实测中心"""
         with self.lock:
+            if self.mode == "sim":
+                raise Refused("仿真不修改真实中心配置；直接调角度并保存表情即可")
             if self._busy():
                 raise Refused("上一个动作还没结束")
             if name not in self.powered:
@@ -565,15 +591,115 @@ class Bench:
             self._record("note", servo=s, status=status, text=text)
 
     def set_range(self, servo, lo, hi):
-        if lo >= hi:
-            raise Refused("下限要小于上限")
-        self._record("range", servo=servo, lo=lo, hi=hi)
+        with self.lock:
+            if self._busy():
+                raise Refused("请等动作停止后再记录范围")
+            if servo not in BY_NAME or servo == "EXA":
+                raise Refused("未知或禁用的电机通道")
+            a = BY_NAME[servo]
+            lo = number(lo, "实测下限", min(a.a, a.b), max(a.a, a.b))
+            hi = number(hi, "实测上限", min(a.a, a.b), max(a.a, a.b))
+            if lo >= hi:
+                raise Refused("下限要小于上限")
+            self._record("range", servo=servo, lo=lo, hi=hi)
 
     def pose(self, name, text):
         if not self.powered:
             raise Refused("没有通电的舵机，没有可记录的姿态")
         kvs = " ".join(f"{n}={self.angles[n]:g}" for n in sorted(self.powered))
         self._record("recipe", name=name, text=text, steps=[f"S {kvs}"])
+
+    def enable_group(self, names):
+        """加入一组，已有电机保持原角度；不用会卸掉其他电机的 O 命令。"""
+        with self.lock:
+            if self._busy():
+                raise Refused("上一个动作还没结束")
+            if not names or not any(set(names) == set(g) for _, g in GROUPS):
+                raise Refused("请选择完整的一组电机")
+            board = BY_NAME[names[0]].board
+            now = self._read(board)
+            goal = validate_angles({n: now[n] for n in names})
+            self._check_ranges(goal)
+            line = "S " + " ".join(f"{n}={v:g}" for n, v in goal.items())
+            self._ask(board, f"V {SPEED}")
+            if self._ask(board, line) != "OK":
+                raise Refused(f"{board} 未接受通电命令")
+            self.powered |= set(names)
+            self.held -= set(names)
+            self.error = ""
+            self._record("cmd", board=board, cmd=line, reply="加入标定", angles=dict(self.angles))
+
+    def _check_ranges(self, goal):
+        verified = load_verified(self.log_path)
+        for n, value in goal.items():
+            if n in verified and not verified[n][0] <= value <= verified[n][1]:
+                raise Refused(f"{n}={value:g} 超出已记录实测范围 {verified[n]}")
+
+    def save_expression(self, label, revision, title="", text=""):
+        with self.lock:
+            if self._busy():
+                raise Refused("请等动作停止后再保存")
+            active = self.powered | self.held
+            if not active:
+                raise Refused("请先加入电机组并调整姿态")
+            for board in {BY_NAME[n].board for n in active}:
+                self._read(board)
+            angles = {n: self.angles[n] for n in sorted(active)}
+            self._check_ranges(angles)
+            pose = self.library.save(label, angles, title, text, revision)
+            self.preview = None
+            self._record("calibration", label=label_key(label), revision=self.library.data["revision"], **pose)
+
+    def load_expression(self, label, intensity=1.0):
+        """只加载预览。不会打开串口、通电或移动。"""
+        with self.lock:
+            goal = self.library.resolve(label, intensity)
+            self._check_ranges(goal)
+            self.preview = {"label": label_key(label), "intensity": intensity, "angles": goal,
+                            "unverified": sorted(set(goal) - load_verified(self.log_path).keys()),
+                            "revision": self.library.data["revision"]}
+
+    @staticmethod
+    def _transition(start, goal, seconds):
+        # 每 50 ms 最多改 5°；较大位移自动延长过渡。原始角度不再加中心偏移。
+        duration = max(seconds, max(abs(v - start[n]) for n, v in goal.items()) / 100)
+        count = max(1, math.ceil(duration / 0.05))
+        return [Frame({n: round(start[n] + (v - start[n]) * i / count, 3) for n, v in goal.items()},
+                      SPEED, duration / count) for i in range(1, count + 1)]
+
+    def emotion(self, label, intensity=1.0, transition=1.0, hold=None, revision=None):
+        """标签调用与页面重放共用唯一串口所有者。hold=None 保持，数值则到时回 neutral。"""
+        transition = number(transition, "过渡秒数", 0.2, 10)
+        if hold is not None:
+            hold = number(hold, "保持秒数", 0, 30)
+        with self.lock:
+            if self._busy():
+                raise Refused("当前有动作或跟踪任务，请等待完成或先卸力")
+            if revision is not None and revision != self.library.data["revision"]:
+                raise Refused("表情库已更新，请重新加载预览")
+            goal = self.library.resolve(label, intensity)
+            self._check_ranges(goal)
+            outside = (self.powered | self.held) - goal.keys()
+            if outside:
+                raise Refused(f"基准之外还有通电通道 {sorted(outside)}，请先全部卸力")
+            for board in {BY_NAME[n].board for n in goal}:
+                self._read(board)
+            start = validate_angles({n: self.angles[n] for n in goal})
+            self._check_ranges(start)
+            legs = self._transition(start, goal, transition)
+            if hold is not None:
+                neutral = self.library.resolve("neutral")
+                self._check_ranges(neutral)
+                legs += [Frame(goal, SPEED, hold)] + self._transition(goal, neutral, transition)
+            self.held -= goal.keys()
+            self.preview = None
+            self.error = ""
+            def done():
+                with self.lock:
+                    if not self.stop.is_set():
+                        self._record("replay", label=label_key(label), intensity=intensity, transition=transition,
+                                     hold=hold, revision=self.library.data["revision"])
+            self._start(legs, additive=True, done=done)
 
     def state(self):
         return {
@@ -590,6 +716,9 @@ class Bench:
             "busy": self._busy(),
             "tracking": self.tracking,
             "error": self.error,
+            "mode": self.mode,
+            "library": self.library.summary(),
+            "preview": self.preview,
         }
 
 
@@ -608,27 +737,52 @@ h1{font-size:18px;margin:0}main{max-width:760px;margin:0 auto;padding:12px 16px 
 button{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);cursor:pointer}
 button:disabled{opacity:.4;cursor:default}input,select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
 input.w{width:72px}.st{padding:3px 0;font-size:14px}.st.done{color:var(--dim)}.st.now{font-weight:700}.new{color:var(--on)}.f{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:8px}.f input.t{flex:1;min-width:180px}
+.primary{background:var(--ok);color:#fff;border-color:var(--ok)}#cal-status{line-height:1.9;margin:10px 0}#cal-preview{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--bg);border-radius:6px}#mode{font-weight:600;color:var(--on)}summary{cursor:pointer}a{color:var(--ok)}.head{flex-wrap:wrap}
 </style></head><body>
 <header><h1>舵机调试台</h1><span class="dim" id="st"></span><button id="stop">全部卸力 (Esc)</button></header>
 <main><div id="alarm"></div><div id="msg"></div>
-<div class="card"><b>表情</b><div class="dim">一组一组走。每步停下看，顶住或嗡嗡响就按 Esc。标“新角度”的是这次还没走过的</div>
+<div class="card" id="calibration"><div class="head"><b>人工标定表情库</b><span id="mode"></span></div>
+<p class="dim">① 下方逐组“加入标定”，调整 ±1° / ±5°，其余组保持原姿态。<br>② 先保存 neutral 基准，再调整并保存其余六类；每类使用同一组通道。<br>③ 加载只预览；点击重放才执行。这里的角度是控制信号，不是位置传感器读数。</p>
+<div id="cal-status" class="dim"></div>
+<div class="f"><label>情绪 <select id="cal-label"></select></label><input id="cal-title" class="t" maxlength="80" placeholder="名称（可选）"></div>
+<div class="f"><input id="cal-note" class="t" maxlength="2000" placeholder="标定说明，如 嘴角上扬、无干涉"><button class="primary" id="cal-save">保存当前姿态</button></div>
+<div class="f"><label>强度 <input id="cal-intensity" class="w" type="number" min="0" max="1" step="0.1" value="1"></label><label>过渡 / 秒 <input id="cal-transition" class="w" type="number" min="0.2" max="10" step="0.1" value="1"></label>
+<button id="cal-load">加载预览</button><button class="primary" id="cal-play" disabled>重放预览姿态</button><button id="cal-neutral">回到已标定 neutral</button></div>
+<div id="cal-preview" class="dim">尚未加载表情。</div><div class="dim" id="cal-path"></div><a href="/expressions.json" download="expressions.json">导出表情库 JSON</a></div>
+<details class="card"><summary>旧版预设动作（未人工标定）</summary><div class="dim">一组一组走。每步停下看，顶住或嗡嗡响就按 Esc。标“新角度”的是这次还没走过的</div>
 <div class="f"><select id="en"></select><select id="ek"><option value="0.3">强度 0.3</option><option value="0.6">强度 0.6</option><option value="1">强度 1.0</option></select>
-<button id="eb">准备</button><button id="ex">下一步</button><button id="ea">走完剩下的</button><button id="eg">一起做</button><button id="et">全部轮播</button></div><div id="es"></div></div>
+<button id="eb">准备</button><button id="ex">下一步</button><button id="ea">走完剩下的</button><button id="eg">一起做</button><button id="et">全部轮播</button></div><div id="es"></div></details>
 <div class="card"><b>视觉跟踪</b><div class="dim">摄像头看到人脸时眼球左右（LR）跟着转，需要 camera.web 在运行。顶住或嗡嗡响就按 Esc</div>
 <div class="f"><button id="tk">开启视觉跟踪</button><span class="dim" id="tks"></span></div></div>
 <div id="list"></div>
-<div class="card"><b>记录当前姿态</b><div class="dim">把通电舵机的当前角度存成一个能复现的动作</div>
-<div class="f"><input id="pn" placeholder="名字，如 张嘴"><input id="pt" class="t" placeholder="说明"><button id="ps">保存姿态</button></div></div>
+<details class="card"><summary>临时动作日志</summary><div class="dim">只写调试日志。需要重放的表情请存入上方表情库。</div>
+<div class="f"><input id="pn" placeholder="名字，如 张嘴"><input id="pt" class="t" placeholder="说明"><button id="ps">记入日志</button></div></details>
 </main><script>
 let S=null,drawn=false;
 const $=i=>document.getElementById(i);
 async function api(body){
+  try{
   const r=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-Head':'1'},body:JSON.stringify(body)});
-  const d=await r.json();$('msg').textContent=d.error||'';if(d.state){S=d.state;render()}return d}
+  const d=await r.json();$('msg').textContent=d.error||'';if(d.state){S=d.state;render()}return d
+  }catch(e){$('alarm').textContent='连不上调试台。要停舵机就断 5V';return {error:'连接失败'}}}
+const labels={neutral:'中性',happy:'高兴',sad:'悲伤',angry:'愤怒',fear:'恐惧',disgust:'厌恶',surprise:'惊讶'};
+function renderCalibration(){
+  const L=S.library,P=S.preview;
+  $('mode').textContent=S.mode==='sim'?'仿真 · 不连接电机':'真机 · 加入或重放会通电';
+  if(!$('cal-label').options.length)for(const [v,t]of Object.entries(labels))$('cal-label').add(new Option(`${t} · ${v}`,v));
+  $('cal-status').textContent=L.labels.map(x=>`${labels[x.label]}：${x.problem||'已保存 ✓'}`).join('　');
+  $('cal-path').textContent=`版本 ${L.revision} · ${L.path}`;
+  const selected=L.labels.find(x=>x.label===$('cal-label').value);
+  $('cal-load').disabled=S.busy||!!selected.problem;
+  $('cal-save').disabled=S.busy||!(S.powered.length+S.held.length);
+  $('cal-neutral').disabled=S.busy||!!L.labels.find(x=>x.label==='neutral').problem;
+  $('cal-play').disabled=S.busy||!P||P.revision!==L.revision||P.label!==$('cal-label').value||P.intensity!==+$('cal-intensity').value;
+  $('cal-preview').textContent=P?`${labels[P.label]} · 强度 ${P.intensity}\n${Object.entries(P.angles).map(([n,v])=>`${n} ${v}°`).join(' · ')}${P.unverified.length?'\n尚未记录完整实测范围：'+P.unverified.join(' '):''}`:'尚未加载表情。';
+}
 function draw(){
   $('list').innerHTML=S.groups.map((g,i)=>`<div class="card" id="g${i}"><div class="head"><b>${i+1}. ${g.label}</b>
-  <button data-power="${i}">只通这组到 90°</button></div>
-  <div class="f"><button data-home="${i}">回中心</button><button data-hold="${i}">保持在 90°</button><button data-sw="${i}" data-amp="15">摆动 ±15</button><button data-sw="${i}" data-amp="30">摆动 ±30</button></div>
+  <button class="primary" data-enable="${i}">加入标定 · 保留其他组</button></div>
+  <div class="f"><button data-home="${i}">本组回中心</button><button data-power="${i}">只通这组到 90°</button><button data-hold="${i}">保持在 90°</button><button data-sw="${i}" data-amp="15">摆动 ±15</button><button data-sw="${i}" data-amp="30">摆动 ±30</button></div>
   ${g.names.map(n=>`<div class="s"><code>${n}</code><span class="deg" id="a${n}"></span>
     <button data-solo="${n}">只通它</button><button data-center="${n}">设为中心</button><span class="dim" id="c${n}"></span>
     ${[-5,-1,1,5].map(d=>`<button data-m="${n}" data-d="${d}">${d>0?'+':''}${d}</button>`).join('')}
@@ -641,6 +795,7 @@ function draw(){
   drawn=true}
 function render(){
   if(!drawn)draw();
+  renderCalibration();
   $('st').textContent=`在线: ${S.boards.join(' ')||'无'} · 通电: ${S.powered.join(' ')||'无'} · 保持: ${S.held.join(' ')||'无'}${S.busy?' · 动作中':''}`;
   $('alarm').textContent=S.error||'';
   const T=S.tracking;$('tk').textContent=T?'关闭视觉跟踪':'开启视觉跟踪';$('tk').disabled=S.busy&&!T;
@@ -655,16 +810,18 @@ function render(){
   const whole=i=>S.groups[i].names.every(n=>S.powered.includes(n)),some=i=>S.groups[i].names.some(n=>S.powered.includes(n));
   document.querySelectorAll('[data-pair]').forEach(b=>b.disabled=S.busy||!whole(b.dataset.pair));
   document.querySelectorAll('[data-home]').forEach(b=>b.disabled=S.busy||!some(b.dataset.home));
-  document.querySelectorAll('[data-sw]').forEach(b=>b.disabled=S.busy||!some(b.dataset.sw));
+  document.querySelectorAll('[data-sw]').forEach(b=>b.disabled=S.busy||!some(b.dataset.sw)||S.powered.some(n=>!S.groups[b.dataset.sw].names.includes(n)));
   document.querySelectorAll('[data-hold]').forEach(b=>b.disabled=S.busy||!some(b.dataset.hold));
-  document.querySelectorAll('[data-center]').forEach(b=>b.disabled=S.busy||!S.powered.includes(b.dataset.center));
+  document.querySelectorAll('[data-center]').forEach(b=>b.disabled=S.mode==='sim'||S.busy||!S.powered.includes(b.dataset.center));
+  document.querySelectorAll('[data-enable]').forEach(b=>{b.disabled=S.busy||whole(b.dataset.enable);b.textContent=whole(b.dataset.enable)?'已加入标定':'加入标定 · 保留其他组'});
   document.querySelectorAll('[data-power],[data-solo]').forEach(b=>b.disabled=S.busy)}
 function plan(g,amp){return g.names.filter(n=>S.powered.includes(n)).map(n=>{const[l,h]=S.limits[n],c=v=>Math.min(h,Math.max(l,v)),d=S.dirs[n];m=S.centers[n];return `${n}: ${c(m+d*amp)} → ${m} → ${c(m-d*amp)} → ${m}`}).join('\n')}
 document.addEventListener('click',e=>{const d=e.target.dataset;if(!d)return;
+  if(d.enable!==undefined)api({op:'enable_group',names:S.groups[d.enable].names});
   if(d.power!==undefined){const g=S.groups[d.power];
     if(confirm(`只给 ${g.names.join(' ')} 通电到 90°，其他全部卸力。\n第一次通电会全速转到 90°，先用手把它推到 90 附近。继续？`))api({op:'power',names:g.names})}
   if(d.solo){if(confirm(`只给 ${d.solo} 通电到 90°，其他全部卸力。继续？`))api({op:'power',names:[d.solo]})}
-  if(d.home!==undefined)api({op:'home'});
+  if(d.home!==undefined)api({op:'home',names:S.groups[d.home].names.filter(n=>S.powered.includes(n))});
   if(d.hold!==undefined)api({op:'hold',names:S.groups[d.hold].names.filter(n=>S.powered.includes(n))});
   if(d.center){if(confirm(`把 ${d.center} 的中心设为 ${S.angles[d.center]}°？之后回中心、摆动、表情都按它算。`))api({op:'set_center',name:d.center})}
   if(d.sw!==undefined){if(confirm(`摆动 ±${d.amp}，超出 config 的部分已截断：\n${plan(S.groups[d.sw],+d.amp)}\n顶住或嗡嗡响就按 Esc。继续？`))api({op:'swing',amp:+d.amp})}
@@ -685,6 +842,17 @@ $('tk').onclick=async()=>{if(S.tracking)return api({op:'track',on:false});
   api({op:'track',on:true})};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')api({op:'relax'})});
 $('ps').onclick=()=>{if(!$('pn').value.trim()){$('msg').textContent='先写名字';return}api({op:'pose',name:$('pn').value,text:$('pt').value})};
+$('cal-label').onchange=()=>{const p=S.library.labels.find(x=>x.label===$('cal-label').value).pose;$('cal-title').value=p?.title||'';$('cal-note').value=p?.text||'';renderCalibration()};
+$('cal-intensity').oninput=()=>renderCalibration();
+$('cal-save').onclick=async()=>{
+  const label=$('cal-label').value,old=S.library.labels.find(x=>x.label===label).pose;
+  if(old&&!confirm(`覆盖 ${label} 的已存姿态？${label==='neutral'?'基准改变后，其他表情需要重新保存。':''}`))return;
+  const r=await api({op:'save_expression',label,revision:S.library.revision,title:$('cal-title').value,text:$('cal-note').value});
+  if(!r.error)$('msg').textContent=`已保存 ${label} · 版本 ${S.library.revision}`;
+};
+$('cal-load').onclick=()=>api({op:'load_expression',label:$('cal-label').value,intensity:+$('cal-intensity').value});
+$('cal-play').onclick=()=>{const p=S.preview;if(p)api({op:'emotion',label:p.label,intensity:p.intensity,revision:p.revision,transition:+$('cal-transition').value})};
+$('cal-neutral').onclick=()=>api({op:'emotion',label:'neutral',revision:S.library.revision,transition:+$('cal-transition').value});
 api({op:'state'});
 setInterval(async()=>{try{const r=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-Head':'1'},body:'{"op":"state"}'});S=(await r.json()).state;render()}catch(e){$('alarm').textContent='连不上调试台。要停舵机就断 5V'}},1000);
 </script></body></html>"""
@@ -703,41 +871,105 @@ def make_handler(bench):
             self.wfile.write(body)
 
         def do_GET(self):
-            self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+            if self.path == "/":
+                return self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+            if self.path in ("/state", "/expressions.json"):
+                with bench.lock:
+                    data = bench.state() if self.path == "/state" else bench.library.export()
+                    body = json.dumps(data, ensure_ascii=False, allow_nan=False).encode()
+                return self._send(200, body, "application/json; charset=utf-8")
+            self._send(404, b"{}", "application/json")
 
         def do_POST(self):
             # 自定义头让别的网页没法跨站发命令
             if self.path != "/api" or self.headers.get("X-Head") != "1":
                 return self._send(403, b"{}", "application/json")
-            req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             out = {}
+            status = 200
             try:
+                size = int(self.headers.get("Content-Length", "0"))
+                if not 0 < size <= 65536:
+                    raise Refused("请求大小需要在 1–65536 字节之间")
+                req = json.loads(self.rfile.read(size))
+                if not isinstance(req, dict):
+                    raise Refused("请求必须是 JSON 对象")
                 op = req.pop("op")
                 if op != "state":
                     {"power": bench.power, "move": bench.move, "relax": bench.relax, "note": bench.note,
                      "range": bench.set_range, "pose": bench.pose, "home": bench.home, "swing": bench.swing, "hold": bench.hold,
                      "expr": bench.expr, "expr_next": bench.expr_next, "expr_all": bench.expr_all,
                      "expr_go": bench.expr_go, "tour": bench.tour,
-                     "set_center": bench.set_center, "track": bench.track}[op](**req)
-            except Refused as e:
+                     "set_center": bench.set_center, "track": bench.track,
+                     "enable_group": bench.enable_group, "save_expression": bench.save_expression,
+                     "load_expression": bench.load_expression, "emotion": bench.emotion}[op](**req)
+            except (Refused, PoseError, ValueError, KeyError, TypeError, IndexError, OSError) as e:
                 out["error"] = str(e)
-            out["state"] = bench.state()
-            self._send(200, json.dumps(out, ensure_ascii=False).encode(), "application/json")
+                status = 400
+            with bench.lock:
+                out["state"] = bench.state()
+                body = json.dumps(out, ensure_ascii=False, allow_nan=False).encode()
+            self._send(status, body, "application/json; charset=utf-8")
 
     return Handler
 
 
-if __name__ == "__main__":
-    bench = Bench(discover(), rediscover=discover)
-    print("在线:", sorted(bench.links), flush=True)
+def main():
+    parser = argparse.ArgumentParser(description="逐组标定、保存表情、按情绪标签重放")
+    parser.add_argument("--sim", action="store_true", help="只用内存串口，保存到独立仿真库")
+    parser.add_argument("--port", type=int, default=PORT)
+    parser.add_argument("--library", type=Path, help="表情库 JSON 路径；重启使用同一路径即可恢复")
+    parser.add_argument("--log-file", type=Path)
+    args = parser.parse_args()
+    path = args.library or (ROOT / "outputs" / "calibration-sim" / "expressions.json" if args.sim else DEFAULT_PATH)
+    log_path = args.log_file or (ROOT / "outputs" / "tune_sim.jsonl" if args.sim else LOG)
+    # 配置损坏先报错，不先占用串口。
+    PoseLibrary(path, mode="sim" if args.sim else "hardware")
+
+    def log(entry):
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False, allow_nan=False) + "\n")
+
+    if args.sim:
+        from head.sim_serial import SimSerial
+        links = {b: SimSerial(b) for b in BOARDS}
+    else:
+        links = discover()
+    bench = Bench(links, log=log, rediscover=None if args.sim else discover,
+                  library_path=path, mode="sim" if args.sim else "hardware")
+    bench.log_path = log_path
+    print(f"{'仿真' if args.sim else '真机'} · 在线: {sorted(bench.links)} · http://127.0.0.1:{args.port}", flush=True)
+    print(f"表情库: {path}", flush=True)
+    closing = threading.Event()
 
     def heartbeat():
-        while True:
-            time.sleep(1)
+        while not closing.wait(1):
             try:
                 bench.beat()
             except Exception as e:
                 bench.error = f"心跳出错：{e}"
 
     threading.Thread(target=heartbeat, daemon=True).start()
-    ThreadingHTTPServer(("127.0.0.1", PORT), make_handler(bench)).serve_forever()
+    import signal
+    def shutdown(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, shutdown)
+    server = None
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(bench))
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        closing.set()
+        try:
+            bench.relax()
+        finally:
+            for link in list(bench.links.values()):
+                link.close()
+            if server:
+                server.server_close()
+
+
+if __name__ == "__main__":
+    main()
