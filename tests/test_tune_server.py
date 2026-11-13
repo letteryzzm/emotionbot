@@ -432,6 +432,74 @@ def test_saved_pose_cannot_bypass_quarantine_and_release_still_works(bench):
     assert bench.powered == {"TON"}
 
 
+def test_unloaded_probe_is_disabled_by_default(bench):
+    with pytest.raises(ts.Refused, match="尚未启用"):
+        bench.probe_llr()
+    assert all(not sent(bench, b) for b in ts.BOARDS)
+
+
+def test_unloaded_probe_only_drives_llr_and_releases(bench):
+    bench.blocked = dict(ts.BLOCKED)
+    bench.llr_unloaded = True
+    bench.probe_llr()
+    finish(bench)
+    assert sent(bench, "mouth") == ["X", "O LLR", "X"]
+    assert sent(bench, "eyes") == sent(bench, "brows") == ["X"]
+    assert not bench.powered and not bench.error
+    assert "已卸力" in bench.llr_probe
+    assert [r["phase"] for r in bench.logged if r["type"] == "probe"] == ["start", "end"]
+    with pytest.raises(ts.Refused):
+        bench.power(["LLR"])
+
+
+@pytest.mark.parametrize("board,line", [("eyes", "O LLR"), ("mouth", "O LLR LLL"),
+                                      ("mouth", "S LLR=95"), ("mouth", "O EXA"), ("mouth", "R")])
+def test_probe_exception_cannot_drive_other_commands(bench, board, line):
+    bench.llr_unloaded = True
+    with pytest.raises(ts.Refused):
+        bench._ask(board, line, unloaded_probe=True)
+    assert all(not sent(bench, b) for b in ts.BOARDS)
+
+
+def test_probe_rejected_when_other_motor_is_powered(bench):
+    bench.llr_unloaded = True
+    bench.enable_group(["TON"])
+    before = list(sent(bench, "mouth"))
+    with pytest.raises(ts.Refused, match="全部卸力"):
+        bench.probe_llr()
+    assert sent(bench, "mouth") == before
+
+
+def test_probe_can_be_cancelled(bench):
+    import time
+    bench.llr_unloaded = True
+    bench.pace = 10
+    bench.probe_llr()
+    deadline = time.monotonic() + 1
+    while "O LLR" not in sent(bench, "mouth") and time.monotonic() < deadline:
+        time.sleep(.005)
+    assert "O LLR" in sent(bench, "mouth")
+    bench.relax()
+    finish(bench)
+    assert sent(bench, "mouth")[-1] == "X" and not bench.powered
+    assert bench.logged[-1]["cancelled"]
+
+
+def test_probe_attempts_release_when_activation_fails(bench):
+    bench.llr_unloaded = True
+    link = bench.links["mouth"]
+    original = link.write
+    def fail_activation(data):
+        original(data)
+        if data.strip() == b"O LLR":
+            link.reply = "ERR test"
+    link.write = fail_activation
+    bench.probe_llr()
+    finish(bench)
+    assert sent(bench, "mouth")[-1] == "X"
+    assert bench.error and not bench.powered
+
+
 @pytest.mark.parametrize("servo,lo,hi", [("EXA", 80, 100), ("TON", float("nan"), 100),
                                       ("TON", 100, 90), ("TON", 0, 180)])
 def test_measured_ranges_reject_invalid_input(bench, servo, lo, hi):

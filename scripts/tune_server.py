@@ -154,7 +154,7 @@ class Bench:
     vision = staticmethod(read_vision)
 
     def __init__(self, links, log=default_log, settle=0.4, pace=1.0, rediscover=None,
-                 library_path=DEFAULT_PATH, mode="hardware", blocked=None):
+                 library_path=DEFAULT_PATH, mode="hardware", blocked=None, llr_unloaded=False):
         self.links, self.log, self.settle, self.pace = links, log, settle, pace
         self.rediscover = rediscover
         self.lock = threading.Lock()
@@ -168,6 +168,8 @@ class Bench:
         self.error = ""
         self.mode = mode
         self.blocked = dict(BLOCKED if blocked is None else blocked)
+        self.llr_unloaded = llr_unloaded  # 本次启动显式确认已拆舵盘，只允许专用短时检查。
+        self.llr_probe = None
         self.library = PoseLibrary(library_path, mode=mode)
         self.preview = None
         for board in list(links):
@@ -181,9 +183,12 @@ class Bench:
             if n in self.blocked:
                 raise Refused(f"{n} 已禁用：{self.blocked[n]}")
 
-    def _ask(self, board, line):
+    def _ask(self, board, line, *, unloaded_probe=False):
         parts = line.split()
-        if parts[0] in ("S", "O"):
+        if unloaded_probe:
+            if not self.llr_unloaded or board != "mouth" or line != "O LLR":
+                raise Refused("空载检查只允许 LLR 到 90°")
+        elif parts[0] in ("S", "O"):
             self._check_enabled(p.split("=")[0] for p in parts[1:])
         elif parts[0] in ("R", "C"):
             self._check_enabled(n for n, a in BY_NAME.items() if a.board == board)
@@ -609,6 +614,54 @@ class Bench:
         for s in servos:
             self._record("note", servo=s, status=status, text=text)
 
+    def probe_llr(self):
+        """用户点击后：仅 LLR 空载到 90°，1 秒后卸力；不解除常规动作锁定。"""
+        with self.lock:
+            if not self.llr_unloaded:
+                raise Refused("尚未启用 LLR 拆舵盘空载检查")
+            if self._busy() or self.powered or self.held:
+                raise Refused("请先全部卸力，等待当前动作结束")
+            if "mouth" not in self.links:
+                raise Refused("mouth 板不在线")
+            self.stop.clear()
+            self.error = ""
+            self.llr_probe = "检查中：90°，1 秒后卸力"
+            self.job = threading.Thread(target=self._probe_llr, daemon=True)
+            self.job.start()
+
+    def _probe_llr(self):
+        try:
+            with self.lock:
+                if self.stop.is_set():
+                    return
+                # 清理所有板子可能残留的输出；唯一通电命令固定为 O LLR。
+                for board in list(self.links):
+                    if self._ask(board, "X") != "OK":
+                        raise Refused(f"{board} 未确认卸力，取消检查")
+                self._record("probe", servo="LLR", phase="start", angle=90, duration=1,
+                             text="用户触发拆舵盘空载检查，不代表机械验收通过")
+                if self._ask("mouth", "O LLR", unloaded_probe=True) != "OK":
+                    raise Refused("LLR 未接受检查命令")
+                self.powered.add("LLR")
+            self.stop.wait(self.pace * 1.0)
+        except (Refused, OSError, ValueError) as e:
+            self.error = str(e)
+        finally:
+            with self.lock:
+                try:
+                    if self._ask("mouth", "X") != "OK":
+                        raise Refused("mouth 未确认卸力，请断开 5V")
+                    self.llr_probe = "已卸力；请记录是否有声音、抖动或发热"
+                except Refused as e:
+                    self.error = f"{e}；请断开舵机 5V"
+                    self.llr_probe = "无法确认卸力，请断开 5V"
+                self.powered.discard("LLR")
+                try:
+                    self._record("probe", servo="LLR", phase="end", error=self.error,
+                                 cancelled=self.stop.is_set())
+                except OSError as e:
+                    self.error = f"检查日志写入失败：{e}"
+
     def set_range(self, servo, lo, hi):
         with self.lock:
             if self._busy():
@@ -741,6 +794,8 @@ class Bench:
             "error": self.error,
             "mode": self.mode,
             "blocked": dict(self.blocked),
+            "llr_unloaded": self.llr_unloaded,
+            "llr_probe": self.llr_probe,
             "library": self.library.summary(),
             "preview": self.preview,
         }
@@ -765,6 +820,9 @@ input.w{width:72px}.st{padding:3px 0;font-size:14px}.st.done{color:var(--dim)}.s
 </style></head><body>
 <header><h1>舵机调试台</h1><span class="dim" id="st"></span><button id="stop">全部卸力 (Esc)</button></header>
 <main><div id="alarm"></div><div id="blocked" class="new"></div><div id="msg"></div>
+<div class="card" id="llr-probe-card" hidden><b>LLR 拆舵盘空载检查</b>
+<p class="dim">只在 LLR 舵盘和连杆已脱离、输出轴无外部负载时使用。手离开轴，保持能立即断开 5V。点击后仅 LLR 通电到 90°，1 秒后自动卸力；Esc 可提前结束。</p>
+<button class="primary" id="llr-probe">LLR 90° · 1 秒后卸力</button><span class="dim" id="llr-probe-state"></span></div>
 <div class="card" id="calibration"><div class="head"><b>人工标定表情库</b><span id="mode"></span></div>
 <p class="dim">① 下方逐组“加入标定”，调整 ±1° / ±5°，其余组保持原姿态。<br>② 先保存 neutral 基准，再调整并保存其余六类；每类使用同一组通道。<br>③ 加载只预览；点击重放才执行。这里的角度是控制信号，不是位置传感器读数。</p>
 <div id="cal-status" class="dim"></div>
@@ -822,7 +880,10 @@ function render(){
   renderCalibration();
   $('st').textContent=`在线: ${S.boards.join(' ')||'无'} · 通电: ${S.powered.join(' ')||'无'} · 保持: ${S.held.join(' ')||'无'}${S.busy?' · 动作中':''}`;
   $('alarm').textContent=S.error||'';
-  $('blocked').textContent=Object.entries(S.blocked||{}).filter(([n])=>n!=='EXA').map(([n,reason])=>`${n} 已锁定：${reason}。不会通电或参与重放。`).join(' ');
+  $('llr-probe-card').hidden=!S.llr_unloaded;
+  $('llr-probe').disabled=S.busy||!!S.powered.length||!!S.held.length||!S.boards.includes('mouth');
+  $('llr-probe-state').textContent=S.llr_probe||'';
+  $('blocked').textContent=Object.entries(S.blocked||{}).filter(([n])=>n!=='EXA').map(([n,reason])=>`${n} 已锁定：${reason}。常规通电与重放已禁用${n==='LLR'&&S.llr_unloaded?'；本次仅开放下方空载短时检查':''}。`).join(' ');
   const T=S.tracking;$('tk').textContent=T?'关闭视觉跟踪':'开启视觉跟踪';$('tk').disabled=S.busy&&!T;
   $('tks').textContent=T?`${T.face?'看到人脸':'没看到人脸'} · LR ${T.deg}° · 范围 ${T.lo}–${T.hi}°`:'';
   if(!$('en').options.length)$('en').innerHTML=S.expressions.map(n=>`<option>${n}</option>`).join('');
@@ -864,6 +925,7 @@ $('eg').onclick=()=>api({op:'expr_go',name:$('en').value,intensity:+$('ek').valu
 $('et').onclick=()=>api({op:'tour',intensity:+$('ek').value});
 $('ea').onclick=()=>{if(confirm('剩下的组会依次自动走，每组之间不再等你确认。继续？'))api({op:'expr_all'})};
 $('stop').onclick=()=>api({op:'relax'});
+$('llr-probe').onclick=()=>api({op:'probe_llr'});
 $('tk').onclick=async()=>{if(S.tracking)return api({op:'track',on:false});
   if(!S.powered.includes('LR')){if(!confirm('只给 LR 通电到 90°，其他卸力，保持的舵机不变。继续？'))return;
     if((await api({op:'power',names:['LR']})).error)return;await new Promise(f=>setTimeout(f,1000))}
@@ -929,7 +991,8 @@ def make_handler(bench):
                      "expr_go": bench.expr_go, "tour": bench.tour,
                      "set_center": bench.set_center, "track": bench.track,
                      "enable_group": bench.enable_group, "save_expression": bench.save_expression,
-                     "load_expression": bench.load_expression, "emotion": bench.emotion}[op](**req)
+                     "load_expression": bench.load_expression, "emotion": bench.emotion,
+                     "probe_llr": bench.probe_llr}[op](**req)
             except (Refused, PoseError, ValueError, KeyError, TypeError, IndexError, OSError) as e:
                 out["error"] = str(e)
                 status = 400
@@ -947,6 +1010,7 @@ def main():
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--library", type=Path, help="表情库 JSON 路径；重启使用同一路径即可恢复")
     parser.add_argument("--log-file", type=Path)
+    parser.add_argument("--llr-unloaded", action="store_true", help="已确认 LLR 拆下舵盘：允许用户触发 90° / 1 秒空载检查")
     args = parser.parse_args()
     path = args.library or (ROOT / "outputs" / "calibration-sim" / "expressions.json" if args.sim else DEFAULT_PATH)
     log_path = args.log_file or (ROOT / "outputs" / "tune_sim.jsonl" if args.sim else LOG)
@@ -964,7 +1028,7 @@ def main():
     else:
         links = discover()
     bench = Bench(links, log=log, rediscover=None if args.sim else discover,
-                  library_path=path, mode="sim" if args.sim else "hardware")
+                  library_path=path, mode="sim" if args.sim else "hardware", llr_unloaded=args.llr_unloaded)
     bench.log_path = log_path
     print(f"{'仿真' if args.sim else '真机'} · 在线: {sorted(bench.links)} · http://127.0.0.1:{args.port}", flush=True)
     print(f"表情库: {path}", flush=True)
