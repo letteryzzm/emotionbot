@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const namesCN = {LLR:'右下唇',LLL:'左下唇',TON:'舌头',JL:'下巴',JR:'下巴',LR:'眼球左右',UD:'眼球上下'};
-let state, selection = ['LLR'], selectionMode = 'single', ownToken = null;
+let state, selection = ['UD'], selectionMode = 'single', ownToken = null;
 let lastToken = null;
 let draft = {}, signs = {}, seq = 0, pending = null, sending = false, generation = 0;
 let axesKey = '', listKey = '', recordsKey = '', networkOK = false, lastError = '';
@@ -43,7 +43,7 @@ function choose(names) {
   lastToken = null;
   selection = [...new Set(names)].sort();
   if (selection.includes('JL') || selection.includes('JR')) selection = [...new Set([...selection,'JL','JR'])].sort();
-  draft = Object.fromEntries(selection.map(n => [n,90]));
+  draft = Object.fromEntries(selection.map(n => [n,state.angles[n] ?? 90]));
   resetObservation(); axesKey = null; render();
 }
 function chooseMotor(n, group) {
@@ -64,7 +64,7 @@ function buildAxes() {
   const key = selection.join(',');
   if (key === axesKey) return; axesKey = key;
   $('axes').innerHTML = selection.map(n => {
-    const [lo,hi] = limits(n); signs[n] = state.dirs[n]; draft[n] = 90;
+    const [lo,hi] = limits(n); signs[n] = state.dirs[n]; draft[n] = state.angles[n] ?? 90;
     return `<section class="axis" data-axis="${n}"><div class="axis-heading"><div class="axis-name">${n}<small>${esc(namesCN[n] || state.groups.find(g=>g.names.includes(n))?.label || '')} · ${state.servo_boards[n]}</small></div><div class="axis-readings"><label>指令角度<output id="actual-${n}">—</output></label><label>滑块目标<output class="target" id="target-${n}">90.0°</output></label></div></div><input type="range" id="slider-${n}" aria-label="${n} 目标角度" min="${lo}" max="${hi}" step="0.5" value="90"><div class="range-labels"><span>${lo}°</span><span>${state.verified_ranges[n]?'已记录的范围':'配置限位 · 尚非机械验收范围'}</span><span>${hi}°</span></div><div class="axis-controls"><button data-n="${n}" data-d="-1">−1°</button><button data-n="${n}" data-d="-0.5">−0.5°</button><button data-n="${n}" data-d="0.5">+0.5°</button><button data-n="${n}" data-d="1">+1°</button><select id="sign-${n}" aria-label="${n} 组联动方向"><option value="1">组正向 → 增大角度</option><option value="-1">组正向 → 减小角度</option></select></div><label class="axis-direction">实际方向说明<input id="direction-${n}" maxlength="120" placeholder="待核实，例如：增角时下唇向上"></label></section>`;
   }).join('');
   selection.forEach(n => {
@@ -73,6 +73,7 @@ function buildAxes() {
     $('sign-'+n).onchange = e => {signs[n] = Number(e.target.value);};
   });
   $('axes').querySelectorAll('[data-d]').forEach(b => b.onclick = () => adjust(b.dataset.n,draft[b.dataset.n]+Number(b.dataset.d)));
+  paintDraft();
 }
 function paintDraft() {
   for (const n of selection) {
@@ -138,7 +139,6 @@ function render() {
   const cal = session(), mine = owned(), range = exploring(), diagnostic = selection.length===1 && selection[0]==='LLR';
   const previous = state.calibration.last_session;
   const canRecordPrevious = !cal && previous?.token===lastToken && sameNames(previous.names);
-  $('normal-controls').classList.toggle('center-phase',!range);
   $('mode').textContent = state.mode==='sim'?'仿真 / 不连接电机':'真机 / ROG';
   $('mode').classList.toggle('live',state.mode==='hardware');
   $('boards').textContent = `${state.boards.length} / 3 控制板在线`;
@@ -150,15 +150,14 @@ function render() {
   buildMotors(); buildAxes();
   const locked = selection.some(n => state.blocked[n] || !state.boards.includes(state.servo_boards[n]));
   $('begin').disabled = !networkOK || !selection.length || locked || state.busy || state.powered.length>0 || state.held.length>0;
+  $('manual').disabled = mine && cal.phase==='center' ? !networkOK : $('begin').disabled;
+  $('manual').textContent = mine ? (range ? '手动调节中' : '转为手动调节') : '通电并手动调节';
   $('probe').disabled = !networkOK || !state.llr_unloaded || !state.boards.includes('mouth') || state.busy || state.powered.length>0;
   $('probe-status').textContent = state.llr_probe || (state.llr_unloaded?'已启用拆舵盘检查模式。':'服务未启用拆舵盘检查模式。');
-  $('enter-range').disabled = !mine || cal.phase !== 'center';
-  $('enter-range').hidden = range;
-  $('range-hint').hidden = range;
   $('capture').disabled = !(mine && cal.at_goal || canRecordPrevious) || sending || Boolean(pending);
   $('capture').textContent = canRecordPrevious ? '补记上次位置（已卸力）' : '记录当前位置';
   $('speed').disabled = !range; $('return90').disabled = !range;
-  $('session-message').textContent = cal ? (mine ? `${cal.phase==='center'?'90° 观察':'慢速探索'} · ${Math.ceil(cal.remaining)} 秒后自动卸力` : '另一个页面持有标定会话；当前页面只读。可按全部卸力结束。') : (locked?'所选通道含隔离或离线电机；LLR 请单独进入检查入口。':state.calibration.message);
+  $('session-message').textContent = cal ? (mine ? `${cal.phase==='center'?'90° 观察；点击上方转为手动调节即可使用滑块':'手动调节中，可直接拖动滑块'} · ${Math.ceil(cal.remaining)} 秒后自动卸力` : '另一个页面持有标定会话；当前页面只读。可按全部卸力结束。') : (locked?'所选通道含隔离或离线电机；LLR 请单独进入检查入口。':'已卸力。点击通电并手动调节后，即可拖动滑块；观察项无需先填写。');
   $('step-center').classList.toggle('active',!range); $('step-range').classList.toggle('active',range); $('step-save').classList.toggle('active',range&&cal.at_goal);
   for (const n of selection) {
     $('actual-'+n).textContent = Number(state.angles[n] ?? 90).toFixed(1)+'°';
@@ -177,18 +176,21 @@ document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
   render();
 });
-$('begin').onclick = run(async () => {
-  const expected = generation; $('begin').disabled = true;
-  await request('cal_begin',{names:selection,duration:Number($('center-duration').value),epoch:state.calibration.epoch});
+async function begin(manual) {
+  const expected = generation; $('begin').disabled = true; $('manual').disabled = true;
+  await request('cal_begin',{names:selection,duration:Number($('center-duration').value),epoch:state.calibration.epoch,manual});
   const token = session()?.token;
   if (expected !== generation) {if(token) await request('cal_stop',{token}); return;}
   ownToken = token; lastToken = token; seq = 0; draft = {...session().goal}; paintDraft(); render();
-  show('已发送 90°。请看实际机构，并填写到位、声音、抖动和发热情况。');
-});
-$('enter-range').onclick = run(async () => {
-  await request('cal_range',{token:ownToken,observation:observation()});
-  draft = {...session().goal}; resetObservation(); paintDraft(); render();
-  show('已记录 90° 观察。现在可拖动滑块，默认 5°/秒；观察异常时按 Esc。');
+  show(manual ? '已通电，可直接拖动滑块或用 ±0.5° / ±1° 微调，默认 5°/秒。' : '已发送 90°，到时自动卸力；也可点击转为手动调节继续调整。');
+}
+$('begin').onclick = run(() => begin(false));
+$('manual').onclick = run(async () => {
+  if (owned() && session().phase==='center') {
+    await request('cal_range',{token:ownToken});
+    draft = {...session().goal}; paintDraft(); render();
+    show('已转为手动调节，可以直接拖动滑块；不需要先填写观察。');
+  } else await begin(true);
 });
 $('return90').onclick = () => {if(exploring()){draft = Object.fromEntries(selection.map(n=>[n,90])); paintDraft(); queueTarget();}};
 $('speed').onchange = () => {if(exploring()) queueTarget();};
@@ -230,4 +232,4 @@ setInterval(async()=>{
   const token = ownToken;
   try {await request('cal_touch',{token});} catch(e){if(ownToken===token) show(e.message,true);} finally{touching=false;}
 },1000);
-poll().then(()=>{if(networkOK) show('已连接。先选电机，再做 90° 检查；页面不会自动通电。');});
+poll().then(()=>{if(networkOK) show('已连接。选电机 → 通电并手动调节 → 拖动滑块；页面不会自动通电。');});

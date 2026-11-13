@@ -88,11 +88,11 @@ class CalibrationControls:
         self.cal = None
         self.last_cal = None
         self.cal_epoch = 0
-        self.cal_message = "选择电机后开始 90° 检查"
+        self.cal_message = "选择电机，点击通电并手动调节后即可使用滑块"
 
     def _cal_session(self, token):
         if not self.cal or token != self.cal["token"] or self.stop.is_set():
-            raise PoseError("标定会话已结束，请重新开始 90° 检查")
+            raise PoseError("标定会话已结束，请重新点击通电并手动调节")
         if time.monotonic() >= min(self.cal["lease"], self.cal["deadline"]):
             raise PoseError("标定会话已超时，等待卸力后重新开始")
         return self.cal
@@ -118,8 +118,10 @@ class CalibrationControls:
         if errors:
             raise PoseError("；".join(errors) + "；请断开舵机 5V")
 
-    def cal_begin(self, names, duration=15, epoch=None):
+    def cal_begin(self, names, duration=15, epoch=None, manual=False):
         duration = number(duration, "90° 检查时长", 1, 30)
+        if type(manual) is not bool:
+            raise PoseError("manual 必须是布尔值")
         if not isinstance(names, list) or not names or len(names) != len(set(names)):
             raise PoseError("请选择一个、一对或一组电机")
         with self.lock:
@@ -127,29 +129,41 @@ class CalibrationControls:
                 raise PoseError("控制状态已改变，已取消过期的通电请求")
             if self._busy() or self.powered or self.held:
                 raise PoseError("请先全部卸力，再开始新的标定会话")
-            goal = self._cal_goal({n: 90 for n in names})
+            # 先检查通道身份；手动模式不要求先经过 90°，也不套用中心补偿。
+            selected = validate_angles({n: 90 for n in names})
+            self._check_enabled(selected)
             # 所有通道与板子预检完成后才发送任何输出。
-            boards = sorted({BY_NAME[n].board for n in goal})
+            boards = sorted({BY_NAME[n].board for n in selected})
+            if any(board not in self.links for board in boards):
+                raise PoseError("所选电机的控制板未连接")
             for board in boards:
                 self._read(board)
+            goal = self._cal_goal({n: self.angles[n] if manual else 90 for n in selected})
             try:
                 self._cal_release()
                 for board in boards:
                     part = [n for n in goal if BY_NAME[n].board == board]
-                    line = "O " + " ".join(part)
+                    if manual:
+                        if self._ask(board, "V 10") != "OK":
+                            raise PoseError(f"{board} 未接受速度限制")
+                        line = "S " + " ".join(f"{n}={goal[n]:g}" for n in part)
+                    else:
+                        line = "O " + " ".join(part)
                     if self._ask(board, line) != "OK":
-                        raise PoseError(f"{board} 未接受 90° 命令")
+                        raise PoseError(f"{board} 未接受通电命令")
                     self.powered.update(part)
                     self._read(board)
-                    self._record("cmd", board=board, cmd=line, reply="90° 检查，实际到位待人工观察")
+                    self._record("cmd", board=board, cmd=line,
+                                 reply="当前指令角度通电，手动调节" if manual else "90° 检查，实际到位待人工观察")
                 now = time.monotonic()
-                self.cal = {"token": uuid.uuid4().hex, "names": sorted(goal), "phase": "center",
+                self.cal = {"token": uuid.uuid4().hex, "names": sorted(goal), "phase": "range" if manual else "center",
                             "goal": goal, "seq": -1, "speed": 5.0,
-                            "lease": now + self.CAL_LEASE, "deadline": now + duration}
+                            "lease": now + self.CAL_LEASE, "deadline": now + (900 if manual else duration)}
                 self.cal_epoch += 1
                 self.stop.clear()
                 self.error = ""
-                self.cal_message = "90° 已发送；请观察，倒计时结束自动卸力"
+                self.cal_message = ("手动调节中；可直接拖动滑块，观察结果另行记录" if manual
+                                    else "90° 已发送；可转为手动调节，倒计时结束自动卸力")
                 self.job = threading.Thread(target=self._cal_loop, args=(self.cal["token"],), daemon=True)
                 self.job.start()
             except Exception:
@@ -176,7 +190,7 @@ class CalibrationControls:
         with self.lock:
             session = self._cal_session(token)
             if session["phase"] != "range":
-                raise PoseError("先记录 90° 到位和稳定性观察，再进入范围探索")
+                raise PoseError("当前是限时 90° 检查，请点击转为手动调节")
             if type(seq) is not int or seq <= session["seq"]:
                 raise PoseError("已丢弃过期的滑块指令")
             goal = self._cal_goal(angles)
@@ -275,20 +289,21 @@ class CalibrationControls:
                 self._cal_session(token)
                 self._cal_capture(name, kind, observation, directions or {})
 
-    def cal_range(self, token, observation):
-        observation = observations(observation)
+    def cal_range(self, token, observation=None):
+        if observation is not None:
+            observation = observations(observation)
         with self.lock:
             session = self._cal_session(token)
             if session["phase"] != "center":
                 raise PoseError("当前已经进入范围探索")
-            if observation["reached"] != "yes" or observation["jitter"] != "no" or observation["heat"] != "no":
-                raise PoseError("请先确认已到位、无明显抖动和异常发热；有异常请记录并卸力")
-            title = "90° 检查 · " + "/".join(session["names"])
-            self._cal_capture(title[:80], "center", observation, {})
+            # 人工观察是记录，不是手动调节的解锁条件；兼容旧客户端附带记录。
+            if observation is not None:
+                title = "90° 检查 · " + "/".join(session["names"])
+                self._cal_capture(title[:80], "center", observation, {})
             session["phase"] = "range"
             session["deadline"] = time.monotonic() + 900
             session["lease"] = time.monotonic() + self.CAL_LEASE
-            self.cal_message = "范围探索中；按 Esc 随时卸力"
+            self.cal_message = "手动调节中；按 Esc 随时卸力"
 
     def cal_restore(self, token, record_id, seq, speed=5):
         with self.lock:

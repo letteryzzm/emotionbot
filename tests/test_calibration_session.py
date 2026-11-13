@@ -62,16 +62,50 @@ def test_offline_group_rejected_before_any_output(cal):
     assert not sent(cal, "mouth")
 
 
-def test_observation_required_and_buzz_is_separate(cal):
+def test_optional_90_test_can_switch_to_manual_without_observations(cal):
     token = start(cal, explore=False)
-    with pytest.raises(PoseError, match="先记录"):
+    with pytest.raises(PoseError, match="转为手动"):
         cal.cal_target(token, 1, {"TON": 91})
-    for key, value in (("reached", "unknown"), ("jitter", "yes"), ("heat", "unknown")):
-        with pytest.raises(PoseError, match="确认"):
-            cal.cal_range(token, {**OBS, key: value})
-    cal.cal_range(token, {**OBS, "buzz": "yes"})
+    cal.cal_range(token)
     assert cal.cal["phase"] == "range"
-    assert cal.positions.data["records"][-1]["observations"]["buzz"] == "yes"
+    assert not cal.positions.data["records"]  # 不自动制造“通过”记录。
+    cal.cal_target(token, 1, {"TON": 91})
+
+
+def test_negative_observations_are_saved_without_locking_manual_control(cal):
+    token = start(cal, explore=False)
+    observation = {"reached": "no", "jitter": "yes", "heat": "unknown", "buzz": "yes", "text": "偏下"}
+    cal.cal_range(token, observation)
+    assert cal.positions.data["records"][-1]["observations"] == observation
+    cal.cal_target(token, 1, {"TON": 91})
+
+
+def test_manual_starts_from_controller_angle_without_center_compensation(cal):
+    cal.links["eyes"].ang["UD"] = 97
+    cal.cal_begin(["UD"], manual=True)
+    token = cal.cal["token"]
+    assert cal.cal["phase"] == "range"
+    assert cal.cal["goal"] == {"UD": 97}
+    assert "S UD=97" in sent(cal, "eyes")
+    assert not any(s.startswith("O ") for b in ts.BOARDS for s in sent(cal, b))
+    assert not cal.positions.data["records"]
+    cal.cal_target(token, 1, {"UD": 98})
+    wait_for(lambda: cal.angles["UD"] == 98)
+
+
+def test_manual_does_not_require_90_inside_verified_range(cal):
+    cal.log_path.write_text('{"type":"range","servo":"UD","lo":95,"hi":110}\n')
+    cal.links["eyes"].ang["UD"] = 100
+    cal.cal_begin(["UD"], manual=True)
+    assert cal.cal["goal"] == {"UD": 100}
+
+
+@pytest.mark.parametrize("names", [["LLR"], ["EXA"], ["JL"]])
+def test_manual_preserves_channel_and_jaw_constraints(cal, names):
+    cal.blocked = dict(ts.BLOCKED)
+    with pytest.raises((PoseError, ts.Refused)):
+        cal.cal_begin(names, manual=True)
+    assert all(not sent(cal, b) for b in ts.BOARDS)
 
 
 def test_latest_target_replaces_previous_without_queue(cal):
