@@ -452,6 +452,23 @@ def test_unloaded_probe_only_drives_llr_and_releases(bench):
         bench.power(["LLR"])
 
 
+def test_unloaded_observation_allows_bounded_longer_hold(bench):
+    bench.llr_unloaded = True
+    bench.probe_llr(duration=30)
+    finish(bench)
+    assert bench.logged[0]["duration"] == 30
+    assert sent(bench, "mouth") == ["X", "O LLR", "X"]
+    assert not bench.powered
+
+
+@pytest.mark.parametrize("duration", [0, 31, float("nan"), float("inf"), True])
+def test_unloaded_observation_rejects_invalid_duration(bench, duration):
+    bench.llr_unloaded = True
+    with pytest.raises(ts.PoseError):
+        bench.probe_llr(duration=duration)
+    assert all(not sent(bench, b) for b in ts.BOARDS)
+
+
 @pytest.mark.parametrize("board,line", [("eyes", "O LLR"), ("mouth", "O LLR LLL"),
                                       ("mouth", "S LLR=95"), ("mouth", "O EXA"), ("mouth", "R")])
 def test_probe_exception_cannot_drive_other_commands(bench, board, line):

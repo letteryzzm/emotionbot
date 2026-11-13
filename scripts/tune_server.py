@@ -614,8 +614,9 @@ class Bench:
         for s in servos:
             self._record("note", servo=s, status=status, text=text)
 
-    def probe_llr(self):
-        """用户点击后：仅 LLR 空载到 90°，1 秒后卸力；不解除常规动作锁定。"""
+    def probe_llr(self, duration=1.0):
+        """仅 LLR 空载到 90°，默认 1 秒、最多 30 秒后卸力；常规锁定保留。"""
+        duration = number(duration, "空载观察秒数", 0.2, 30)
         with self.lock:
             if not self.llr_unloaded:
                 raise Refused("尚未启用 LLR 拆舵盘空载检查")
@@ -625,11 +626,11 @@ class Bench:
                 raise Refused("mouth 板不在线")
             self.stop.clear()
             self.error = ""
-            self.llr_probe = "检查中：90°，1 秒后卸力"
-            self.job = threading.Thread(target=self._probe_llr, daemon=True)
+            self.llr_probe = f"检查中：90°，{duration:g} 秒后卸力"
+            self.job = threading.Thread(target=self._probe_llr, args=(duration,), daemon=True)
             self.job.start()
 
-    def _probe_llr(self):
+    def _probe_llr(self, duration):
         try:
             with self.lock:
                 if self.stop.is_set():
@@ -638,12 +639,12 @@ class Bench:
                 for board in list(self.links):
                     if self._ask(board, "X") != "OK":
                         raise Refused(f"{board} 未确认卸力，取消检查")
-                self._record("probe", servo="LLR", phase="start", angle=90, duration=1,
+                self._record("probe", servo="LLR", phase="start", angle=90, duration=duration,
                              text="用户触发拆舵盘空载检查，不代表机械验收通过")
                 if self._ask("mouth", "O LLR", unloaded_probe=True) != "OK":
                     raise Refused("LLR 未接受检查命令")
                 self.powered.add("LLR")
-            self.stop.wait(self.pace * 1.0)
+            self.stop.wait(self.pace * duration)
         except (Refused, OSError, ValueError) as e:
             self.error = str(e)
         finally:
