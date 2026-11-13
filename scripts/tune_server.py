@@ -24,6 +24,7 @@ from typing import NamedTuple
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from head.actuators import BY_NAME, center, save_center, to_angles  # noqa: E402
+from head.calibration_session import CalibrationControls, PositionBook  # noqa: E402
 from camera.behavior import gaze_to_u  # noqa: E402
 from head.expressions import EXPRESSIONS, expression  # noqa: E402
 from head.eye_motion import EYES, eye_frames, eye_pose  # noqa: E402
@@ -147,7 +148,7 @@ def discover(skip=()):
     return links
 
 
-class Bench:
+class Bench(CalibrationControls):
     save_center = staticmethod(save_center)
 
     log_path = LOG
@@ -172,6 +173,7 @@ class Bench:
         self.llr_probe = None
         self.library = PoseLibrary(library_path, mode=mode)
         self.preview = None
+        self._init_calibration(Path(library_path).with_name(Path(library_path).stem + "-positions.json"))
         for board in list(links):
             self._read(board)
 
@@ -595,10 +597,12 @@ class Bench:
         # 一块板失败也要继续卸其他板
         self.stop.set()
         with self.lock:
+            self.cal_epoch += 1
             errors = []
             for board in list(self.links):
                 try:
-                    self._ask(board, "X")
+                    if self._ask(board, "X") != "OK":
+                        raise Refused(f"{board} 未确认卸力，请断开舵机 5V")
                 except Refused as e:
                     errors.append(str(e))
             self.powered = set()
@@ -614,10 +618,12 @@ class Bench:
         for s in servos:
             self._record("note", servo=s, status=status, text=text)
 
-    def probe_llr(self, duration=1.0):
+    def probe_llr(self, duration=1.0, epoch=None):
         """仅 LLR 空载到 90°，默认 1 秒、最多 30 秒后卸力；常规锁定保留。"""
         duration = number(duration, "空载观察秒数", 0.2, 30)
         with self.lock:
+            if epoch is not None and (type(epoch) is not int or epoch != self.cal_epoch):
+                raise Refused("控制状态已改变，已取消过期的检查请求")
             if not self.llr_unloaded:
                 raise Refused("尚未启用 LLR 拆舵盘空载检查")
             if self._busy() or self.powered or self.held:
@@ -625,6 +631,7 @@ class Bench:
             if "mouth" not in self.links:
                 raise Refused("mouth 板不在线")
             self.stop.clear()
+            self.cal_epoch += 1
             self.error = ""
             self.llr_probe = f"检查中：90°，{duration:g} 秒后卸力"
             self.job = threading.Thread(target=self._probe_llr, args=(duration,), daemon=True)
@@ -711,7 +718,7 @@ class Bench:
 
     def save_expression(self, label, revision, title="", text=""):
         with self.lock:
-            if self._busy():
+            if self._busy() and not self._cal_at_goal():
                 raise Refused("请等动作停止后再保存")
             active = self.powered | self.held
             self._check_enabled(active)
@@ -780,6 +787,7 @@ class Bench:
 
     def state(self):
         return {
+            "stamp": time.monotonic_ns(),
             "groups": [{"label": label, "names": names} for label, names in GROUPS],
             "limits": {n: [min(a.a, a.b), max(a.a, a.b)] for n, a in BY_NAME.items()},
             "angles": self.angles,
@@ -799,154 +807,14 @@ class Bench:
             "llr_probe": self.llr_probe,
             "library": self.library.summary(),
             "preview": self.preview,
+            "calibration": self.calibration_state(),
+            "servo_boards": {n: a.board for n, a in BY_NAME.items()},
+            "verified_ranges": load_verified(self.log_path),
         }
 
 
-PAGE = r"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>舵机调试台</title><style>
-:root{--bg:#f7f6f2;--card:#fff;--ink:#1f2328;--dim:#667;--line:#e2e0d8;--ok:#1a7f4b;--bad:#c0392b;--on:#b7791f}
-@media (prefers-color-scheme:dark){:root{--bg:#16181c;--card:#1f2228;--ink:#e8e8e6;--dim:#99a;--line:#33363d;--ok:#4cc38a;--bad:#ff7b6b;--on:#e0a84a}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,"PingFang SC",sans-serif}
-header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-h1{font-size:18px;margin:0}main{max-width:760px;margin:0 auto;padding:12px 16px 60px}
-#stop{margin-left:auto;background:var(--bad);color:#fff;border:0;border-radius:8px;padding:12px 22px;font-size:16px;font-weight:700;cursor:pointer}
-#msg{min-height:22px;color:var(--bad);padding:6px 0}#alarm:not(:empty){background:var(--bad);color:#fff;border-radius:8px;padding:10px 12px;font-weight:600;margin-top:8px}.dim{color:var(--dim);font-size:13px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}.card.on{border-color:var(--on)}
-.head{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.s{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0}.s code{width:44px;font-weight:700}.deg{width:58px;font-variant-numeric:tabular-nums}
-button{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);cursor:pointer}
-button:disabled{opacity:.4;cursor:default}input,select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
-input.w{width:72px}.st{padding:3px 0;font-size:14px}.st.done{color:var(--dim)}.st.now{font-weight:700}.new{color:var(--on)}.f{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:8px}.f input.t{flex:1;min-width:180px}
-.primary{background:var(--ok);color:#fff;border-color:var(--ok)}#cal-status{line-height:1.9;margin:10px 0}#cal-preview{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--bg);border-radius:6px}#mode{font-weight:600;color:var(--on)}summary{cursor:pointer}a{color:var(--ok)}.head{flex-wrap:wrap}
-</style></head><body>
-<header><h1>舵机调试台</h1><span class="dim" id="st"></span><button id="stop">全部卸力 (Esc)</button></header>
-<main><div id="alarm"></div><div id="blocked" class="new"></div><div id="msg"></div>
-<div class="card" id="llr-probe-card" hidden><b>LLR 拆舵盘空载检查</b>
-<p class="dim">只在 LLR 舵盘和连杆已脱离、输出轴无外部负载时使用。手离开轴，保持能立即断开 5V。点击后仅 LLR 通电到 90°，1 秒后自动卸力；Esc 可提前结束。</p>
-<button class="primary" id="llr-probe">LLR 90° · 1 秒后卸力</button><span class="dim" id="llr-probe-state"></span></div>
-<div class="card" id="calibration"><div class="head"><b>人工标定表情库</b><span id="mode"></span></div>
-<p class="dim">① 下方逐组“加入标定”，调整 ±1° / ±5°，其余组保持原姿态。<br>② 先保存 neutral 基准，再调整并保存其余六类；每类使用同一组通道。<br>③ 加载只预览；点击重放才执行。这里的角度是控制信号，不是位置传感器读数。</p>
-<div id="cal-status" class="dim"></div>
-<div class="f"><label>情绪 <select id="cal-label"></select></label><input id="cal-title" class="t" maxlength="80" placeholder="名称（可选）"></div>
-<div class="f"><input id="cal-note" class="t" maxlength="2000" placeholder="标定说明，如 嘴角上扬、无干涉"><button class="primary" id="cal-save">保存当前姿态</button></div>
-<div class="f"><label>强度 <input id="cal-intensity" class="w" type="number" min="0" max="1" step="0.1" value="1"></label><label>过渡 / 秒 <input id="cal-transition" class="w" type="number" min="0.2" max="10" step="0.1" value="1"></label>
-<button id="cal-load">加载预览</button><button class="primary" id="cal-play" disabled>重放预览姿态</button><button id="cal-neutral">回到已标定 neutral</button></div>
-<div id="cal-preview" class="dim">尚未加载表情。</div><div class="dim" id="cal-path"></div><a href="/expressions.json" download="expressions.json">导出表情库 JSON</a></div>
-<details class="card"><summary>旧版预设动作（未人工标定）</summary><div class="dim">一组一组走。每步停下看，顶住或嗡嗡响就按 Esc。标“新角度”的是这次还没走过的</div>
-<div class="f"><select id="en"></select><select id="ek"><option value="0.3">强度 0.3</option><option value="0.6">强度 0.6</option><option value="1">强度 1.0</option></select>
-<button id="eb">准备</button><button id="ex">下一步</button><button id="ea">走完剩下的</button><button id="eg">一起做</button><button id="et">全部轮播</button></div><div id="es"></div></details>
-<div class="card"><b>视觉跟踪</b><div class="dim">摄像头看到人脸时眼球左右（LR）跟着转，需要 camera.web 在运行。顶住或嗡嗡响就按 Esc</div>
-<div class="f"><button id="tk">开启视觉跟踪</button><span class="dim" id="tks"></span></div></div>
-<div id="list"></div>
-<details class="card"><summary>临时动作日志</summary><div class="dim">只写调试日志。需要重放的表情请存入上方表情库。</div>
-<div class="f"><input id="pn" placeholder="名字，如 张嘴"><input id="pt" class="t" placeholder="说明"><button id="ps">记入日志</button></div></details>
-</main><script>
-let S=null,drawn=false;
-const $=i=>document.getElementById(i);
-async function api(body){
-  try{
-  const r=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-Head':'1'},body:JSON.stringify(body)});
-  const d=await r.json();$('msg').textContent=d.error||'';if(d.state){S=d.state;render()}return d
-  }catch(e){$('alarm').textContent='连不上调试台。要停舵机就断 5V';return {error:'连接失败'}}}
-const labels={neutral:'中性',happy:'高兴',sad:'悲伤',angry:'愤怒',fear:'恐惧',disgust:'厌恶',surprise:'惊讶'};
-function renderCalibration(){
-  const L=S.library,P=S.preview;
-  $('mode').textContent=S.mode==='sim'?'仿真 · 不连接电机':'真机 · 加入或重放会通电';
-  if(!$('cal-label').options.length)for(const [v,t]of Object.entries(labels))$('cal-label').add(new Option(`${t} · ${v}`,v));
-  $('cal-status').textContent=L.labels.map(x=>`${labels[x.label]}：${x.problem||'已保存 ✓'}`).join('　');
-  $('cal-path').textContent=`版本 ${L.revision} · ${L.path}`;
-  const selected=L.labels.find(x=>x.label===$('cal-label').value);
-  $('cal-load').disabled=S.busy||!!selected.problem;
-  $('cal-save').disabled=S.busy||!(S.powered.length+S.held.length);
-  $('cal-neutral').disabled=S.busy||!!L.labels.find(x=>x.label==='neutral').problem;
-  $('cal-play').disabled=S.busy||!P||P.revision!==L.revision||P.label!==$('cal-label').value||P.intensity!==+$('cal-intensity').value;
-  $('cal-preview').textContent=P?`${labels[P.label]} · 强度 ${P.intensity}\n${Object.entries(P.angles).map(([n,v])=>`${n} ${v}°`).join(' · ')}${P.unverified.length?'\n尚未记录完整实测范围：'+P.unverified.join(' '):''}`:'尚未加载表情。';
-}
-function draw(){
-  $('list').innerHTML=S.groups.map((g,i)=>`<div class="card" id="g${i}"><div class="head"><b>${i+1}. ${g.label}</b>
-  <button class="primary" data-enable="${i}">加入标定 · 保留其他组</button></div>
-  <div class="f"><button data-home="${i}">本组回中心</button><button data-power="${i}">只通这组到 90°</button><button data-hold="${i}">保持在 90°</button><button data-sw="${i}" data-amp="15">摆动 ±15</button><button data-sw="${i}" data-amp="30">摆动 ±30</button></div>
-  ${g.names.map(n=>`<div class="s"><code>${n}</code><span class="deg" id="a${n}"></span>
-    <button data-solo="${n}">只通它</button><button data-center="${n}">设为中心</button><span class="dim" id="c${n}"></span>
-    ${[-5,-1,1,5].map(d=>`<button data-m="${n}" data-d="${d}">${d>0?'+':''}${d}</button>`).join('')}
-    <span class="dim">config ${S.limits[n][0]}–${S.limits[n][1]}</span></div>`).join('')}
-  ${g.names.length==2?`<div class="s"><span class="dim">成对</span>${[[5,-5],[1,-1],[-1,1],[-5,5]].map(p=>`<button data-pair="${i}" data-a="${p[0]}" data-b="${p[1]}">${g.names[0]} ${p[0]>0?'+':''}${p[0]} / ${g.names[1]} ${p[1]>0?'+':''}${p[1]}</button>`).join('')}</div>`:''}
-  <div class="f"><select id="ns${i}">${g.names.length>1?`<option value="${g.names.join(',')}">整组</option>`:''}${g.names.map(n=>`<option>${n}</option>`).join('')}</select>
-    <input class="t" id="nt${i}" placeholder="现象：方向、声音、顶住的位置">
-    <button data-note="${i}" data-s="ok">通过</button><button data-note="${i}" data-s="bad">有问题</button><button data-note="${i}" data-s="info">记一下</button></div>
-  <div class="f"><span class="dim">实测范围</span>${g.names.map(n=>`<code>${n}</code><input class="w" id="lo${n}" value="${S.limits[n][0]}"><input class="w" id="hi${n}" value="${S.limits[n][1]}"><button data-range="${n}">保存</button>`).join('')}</div></div>`).join('');
-  drawn=true}
-function render(){
-  if(!drawn)draw();
-  renderCalibration();
-  $('st').textContent=`在线: ${S.boards.join(' ')||'无'} · 通电: ${S.powered.join(' ')||'无'} · 保持: ${S.held.join(' ')||'无'}${S.busy?' · 动作中':''}`;
-  $('alarm').textContent=S.error||'';
-  $('llr-probe-card').hidden=!S.llr_unloaded;
-  $('llr-probe').disabled=S.busy||!!S.powered.length||!!S.held.length||!S.boards.includes('mouth');
-  $('llr-probe-state').textContent=S.llr_probe||'';
-  $('blocked').textContent=Object.entries(S.blocked||{}).filter(([n])=>n!=='EXA').map(([n,reason])=>`${n} 已锁定：${reason}。常规通电与重放已禁用${n==='LLR'&&S.llr_unloaded?'；本次仅开放下方空载短时检查':''}。`).join(' ');
-  const T=S.tracking;$('tk').textContent=T?'关闭视觉跟踪':'开启视觉跟踪';$('tk').disabled=S.busy&&!T;
-  $('tks').textContent=T?`${T.face?'看到人脸':'没看到人脸'} · LR ${T.deg}° · 范围 ${T.lo}–${T.hi}°`:'';
-  if(!$('en').options.length)$('en').innerHTML=S.expressions.map(n=>`<option>${n}</option>`).join('');
-  const sc=S.script,html=sc?sc.steps.map((s,i)=>`<div class="st ${i<sc.i?'done':i==sc.i?'now':''}">${i+1}. ${s.label}：${Object.entries(s.goal).map(([n,v])=>`${n} ${v}°`).join('，')}${s.new.length?` <span class="new">新角度 ${s.new.join(' ')}</span>`:''}</div>`).join(''):'';
-  if($('es').dataset.h!==html){$('es').innerHTML=html;$('es').dataset.h=html}
-  $('ex').disabled=$('ea').disabled=S.busy||!sc||sc.i>=sc.steps.length;$('eb').disabled=$('eg').disabled=$('et').disabled=S.busy;
-  S.groups.forEach((g,i)=>{$('g'+i).classList.toggle('on',g.names.some(n=>S.powered.includes(n)));
-    g.names.forEach(n=>{$('a'+n).textContent=(S.angles[n]??'?')+'°';$('c'+n).textContent=S.centers[n]!=90?`中心 ${S.centers[n]}°`:''})});
-  document.querySelectorAll('[data-m]').forEach(b=>b.disabled=S.busy||!S.powered.includes(b.dataset.m));
-  const whole=i=>S.groups[i].names.every(n=>S.powered.includes(n)),some=i=>S.groups[i].names.some(n=>S.powered.includes(n));
-  document.querySelectorAll('[data-pair]').forEach(b=>b.disabled=S.busy||!whole(b.dataset.pair));
-  document.querySelectorAll('[data-home]').forEach(b=>b.disabled=S.busy||!some(b.dataset.home));
-  document.querySelectorAll('[data-sw]').forEach(b=>b.disabled=S.busy||!some(b.dataset.sw)||S.powered.some(n=>!S.groups[b.dataset.sw].names.includes(n)));
-  document.querySelectorAll('[data-hold]').forEach(b=>b.disabled=S.busy||!some(b.dataset.hold));
-  document.querySelectorAll('[data-center]').forEach(b=>b.disabled=S.mode==='sim'||S.busy||!S.powered.includes(b.dataset.center));
-  const blockedGroup=i=>S.groups[i].names.some(n=>S.blocked?.[n]);
-  document.querySelectorAll('[data-enable]').forEach(b=>{const off=blockedGroup(b.dataset.enable);b.disabled=S.busy||off||whole(b.dataset.enable);b.textContent=off?'含禁用通道':whole(b.dataset.enable)?'已加入标定':'加入标定 · 保留其他组'});
-  document.querySelectorAll('[data-power]').forEach(b=>b.disabled=S.busy||blockedGroup(b.dataset.power));
-  document.querySelectorAll('[data-solo]').forEach(b=>b.disabled=S.busy||!!S.blocked?.[b.dataset.solo]);
-  document.querySelectorAll('[data-m]').forEach(b=>{if(S.blocked?.[b.dataset.m])b.disabled=true})}
-function plan(g,amp){return g.names.filter(n=>S.powered.includes(n)).map(n=>{const[l,h]=S.limits[n],c=v=>Math.min(h,Math.max(l,v)),d=S.dirs[n];m=S.centers[n];return `${n}: ${c(m+d*amp)} → ${m} → ${c(m-d*amp)} → ${m}`}).join('\n')}
-document.addEventListener('click',e=>{const d=e.target.dataset;if(!d)return;
-  if(d.enable!==undefined)api({op:'enable_group',names:S.groups[d.enable].names});
-  if(d.power!==undefined){const g=S.groups[d.power];
-    if(confirm(`只给 ${g.names.join(' ')} 通电到 90°，其他全部卸力。\n第一次通电会全速转到 90°，先用手把它推到 90 附近。继续？`))api({op:'power',names:g.names})}
-  if(d.solo){if(confirm(`只给 ${d.solo} 通电到 90°，其他全部卸力。继续？`))api({op:'power',names:[d.solo]})}
-  if(d.home!==undefined)api({op:'home',names:S.groups[d.home].names.filter(n=>S.powered.includes(n))});
-  if(d.hold!==undefined)api({op:'hold',names:S.groups[d.hold].names.filter(n=>S.powered.includes(n))});
-  if(d.center){if(confirm(`把 ${d.center} 的中心设为 ${S.angles[d.center]}°？之后回中心、摆动、表情都按它算。`))api({op:'set_center',name:d.center})}
-  if(d.sw!==undefined){if(confirm(`摆动 ±${d.amp}，超出 config 的部分已截断：\n${plan(S.groups[d.sw],+d.amp)}\n顶住或嗡嗡响就按 Esc。继续？`))api({op:'swing',amp:+d.amp})}
-  if(d.m)api({op:'move',deltas:{[d.m]:+d.d}});
-  if(d.pair!==undefined){const n=S.groups[d.pair].names;api({op:'move',deltas:{[n[0]]:+d.a,[n[1]]:+d.b}})}
-  if(d.note!==undefined){const t=$('nt'+d.note);if(!t.value.trim()){$('msg').textContent='先写现象';return}
-    api({op:'note',servos:$('ns'+d.note).value.split(','),status:d.s,text:t.value}).then(r=>{if(!r.error)t.value=''})}
-  if(d.range)api({op:'range',servo:d.range,lo:+$('lo'+d.range).value,hi:+$('hi'+d.range).value})});
-$('eb').onclick=()=>api({op:'expr',name:$('en').value,intensity:+$('ek').value});
-$('ex').onclick=()=>api({op:'expr_next'});
-$('eg').onclick=()=>api({op:'expr_go',name:$('en').value,intensity:+$('ek').value});
-$('et').onclick=()=>api({op:'tour',intensity:+$('ek').value});
-$('ea').onclick=()=>{if(confirm('剩下的组会依次自动走，每组之间不再等你确认。继续？'))api({op:'expr_all'})};
-$('stop').onclick=()=>api({op:'relax'});
-$('llr-probe').onclick=()=>api({op:'probe_llr'});
-$('tk').onclick=async()=>{if(S.tracking)return api({op:'track',on:false});
-  if(!S.powered.includes('LR')){if(!confirm('只给 LR 通电到 90°，其他卸力，保持的舵机不变。继续？'))return;
-    if((await api({op:'power',names:['LR']})).error)return;await new Promise(f=>setTimeout(f,1000))}
-  api({op:'track',on:true})};
-document.addEventListener('keydown',e=>{if(e.key==='Escape')api({op:'relax'})});
-$('ps').onclick=()=>{if(!$('pn').value.trim()){$('msg').textContent='先写名字';return}api({op:'pose',name:$('pn').value,text:$('pt').value})};
-$('cal-label').onchange=()=>{const p=S.library.labels.find(x=>x.label===$('cal-label').value).pose;$('cal-title').value=p?.title||'';$('cal-note').value=p?.text||'';renderCalibration()};
-$('cal-intensity').oninput=()=>renderCalibration();
-$('cal-save').onclick=async()=>{
-  const label=$('cal-label').value,old=S.library.labels.find(x=>x.label===label).pose;
-  if(old&&!confirm(`覆盖 ${label} 的已存姿态？${label==='neutral'?'基准改变后，其他表情需要重新保存。':''}`))return;
-  const r=await api({op:'save_expression',label,revision:S.library.revision,title:$('cal-title').value,text:$('cal-note').value});
-  if(!r.error)$('msg').textContent=`已保存 ${label} · 版本 ${S.library.revision}`;
-};
-$('cal-load').onclick=()=>api({op:'load_expression',label:$('cal-label').value,intensity:+$('cal-intensity').value});
-$('cal-play').onclick=()=>{const p=S.preview;if(p)api({op:'emotion',label:p.label,intensity:p.intensity,revision:p.revision,transition:+$('cal-transition').value})};
-$('cal-neutral').onclick=()=>api({op:'emotion',label:'neutral',revision:S.library.revision,transition:+$('cal-transition').value});
-api({op:'state'});
-setInterval(async()=>{try{const r=await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json','X-Head':'1'},body:'{"op":"state"}'});S=(await r.json()).state;render()}catch(e){$('alarm').textContent='连不上调试台。要停舵机就断 5V'}},1000);
-</script></body></html>"""
+WEB = ROOT / "head" / "web"
+PAGE = (WEB / "calibration.html").read_text()
 
 
 def make_handler(bench):
@@ -958,12 +826,20 @@ def make_handler(bench):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
 
         def do_GET(self):
             if self.path == "/":
                 return self._send(200, PAGE.encode(), "text/html; charset=utf-8")
+            if self.path in ("/calibration.css", "/calibration.js"):
+                mime = "text/css" if self.path.endswith(".css") else "text/javascript"
+                return self._send(200, (WEB / self.path[1:]).read_bytes(), mime + "; charset=utf-8")
+            if self.path == "/positions.json":
+                with bench.lock:
+                    body = json.dumps(bench.positions.export(), ensure_ascii=False, allow_nan=False).encode()
+                return self._send(200, body, "application/json; charset=utf-8")
             if self.path in ("/state", "/expressions.json"):
                 with bench.lock:
                     data = bench.state() if self.path == "/state" else bench.library.export()
@@ -993,7 +869,11 @@ def make_handler(bench):
                      "set_center": bench.set_center, "track": bench.track,
                      "enable_group": bench.enable_group, "save_expression": bench.save_expression,
                      "load_expression": bench.load_expression, "emotion": bench.emotion,
-                     "probe_llr": bench.probe_llr}[op](**req)
+                     "probe_llr": bench.probe_llr,
+                     "cal_begin": bench.cal_begin, "cal_touch": bench.cal_touch,
+                     "cal_stop": bench.cal_stop,
+                     "cal_target": bench.cal_target, "cal_range": bench.cal_range,
+                     "cal_capture": bench.cal_capture, "cal_restore": bench.cal_restore}[op](**req)
             except (Refused, PoseError, ValueError, KeyError, TypeError, IndexError, OSError) as e:
                 out["error"] = str(e)
                 status = 400
@@ -1017,6 +897,7 @@ def main():
     log_path = args.log_file or (ROOT / "outputs" / "tune_sim.jsonl" if args.sim else LOG)
     # 配置损坏先报错，不先占用串口。
     PoseLibrary(path, mode="sim" if args.sim else "hardware")
+    PositionBook(path.with_name(path.stem + "-positions.json"), mode="sim" if args.sim else "hardware")
 
     def log(entry):
         log_path.parent.mkdir(parents=True, exist_ok=True)

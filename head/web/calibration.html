@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EmotionBot · 舵机标定台</title>
+  <link rel="stylesheet" href="/calibration.css">
+  <script defer src="/calibration.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brandmark">E / B</span><div><strong>EmotionBot</strong><span>舵机标定台 <small>02</small></span></div></div>
+  <div class="connection"><span id="mode" class="tag">连接中</span><span id="boards">正在读取控制板</span></div>
+  <button id="stop" class="stop">全部卸力 <kbd>Esc</kbd></button>
+</header>
+<div id="notice" role="status" aria-live="polite">正在连接标定服务…</div>
+<div class="workspace">
+<aside class="selection">
+  <div class="section-label">01 / 选择控制对象</div>
+  <h1>从一颗舵机开始。</h1><p class="muted">先检查，再探索，最后留下记录。</p>
+  <div class="segmented" id="selection-mode" aria-label="选择模式">
+    <button data-mode="single" aria-pressed="true">单个</button><button data-mode="pair" aria-pressed="false">成对</button><button data-mode="custom" aria-pressed="false">自选组</button>
+  </div>
+  <div id="motor-list"></div>
+  <div class="selection-footer"><strong id="selection-count">未选择</strong><p>JL / JR 共用下巴机构，始终成对控制。左右命名以接线通道为准。</p></div>
+</aside>
+<main>
+  <div class="work-heading"><div><div class="section-label">02 / 手动标定</div><h2 id="selection-title">LLR <span>右下唇</span></h2></div><span id="power-status" class="tag">已卸力</span></div>
+  <nav class="steps" aria-label="标定步骤"><span id="step-center" class="active"><b>1</b> 90° 检查</span><span id="step-range"><b>2</b> 慢速探索</span><span id="step-save"><b>3</b> 记录位置</span></nav>
+  <section id="diagnostic" hidden>
+    <div class="fault-label">LLR / 故障观察</div><h3>拆下舵盘，单独检查 90°</h3>
+    <p>目前仍有空载嗡嗡声。这里只允许限时 90° 检查，范围探索和组联动保持锁定。</p>
+    <div class="inline"><label>保持时间 <select id="probe-duration"><option value="1">1 秒</option><option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option><option value="30">30 秒</option></select></label><button id="probe" class="primary">90° 检查 → 自动卸力</button></div>
+    <p id="probe-status" class="muted"></p>
+    <label>本次观察<textarea id="probe-note" placeholder="例如：拆舵盘，90° 仍嗡嗡响；能保持，无可见抖动；温升未测。"></textarea></label>
+    <button id="probe-save">记录 LLR 观察</button>
+  </section>
+  <section id="normal-controls">
+    <div class="start-line"><div><h3>先检查 90° 能否到位</h3><p>首次通电直接输出 90°；软件读数不代表真实轴角。</p></div><div class="inline"><select id="center-duration" aria-label="90度观察时长"><option value="15">观察 15 秒</option><option value="30">观察 30 秒</option><option value="5">观察 5 秒</option></select><button id="begin" class="primary">开始 90° 检查</button></div></div>
+    <div id="session-message" class="session-message">通电前，确认所选机构可以到达 90°。</div>
+    <div class="toolbar"><label>移动速度 <select id="speed"><option value="5">5° / 秒 · 精细</option><option value="10">10° / 秒</option><option value="20">20° / 秒</option><option value="30">30° / 秒</option></select></label><label class="check"><input type="checkbox" id="linked" checked>按方向联动</label><button id="return90">慢速回到 90°</button></div>
+    <div id="axes"></div>
+    <div class="observations">
+      <div class="subheading"><h3>现场观察</h3><span>由你确认，软件不自动判合格</span></div>
+      <div class="observation-fields">
+        <label>实际到位<select id="obs-reached"><option value="unknown">未确认</option><option value="yes">是</option><option value="no">否</option></select></label>
+        <label>嗡嗡声<select id="obs-buzz"><option value="unknown">未确认</option><option value="no">无</option><option value="yes">有</option></select></label>
+        <label>明显抖动<select id="obs-jitter"><option value="unknown">未确认</option><option value="no">无</option><option value="yes">有</option></select></label>
+        <label>异常发热<select id="obs-heat"><option value="unknown">未确认</option><option value="no">未发现</option><option value="yes">有</option></select></label>
+      </div>
+      <label class="note-label">补充说明<textarea id="obs-text" placeholder="可记录空载/装配状态、声音变化、重复回位、测得的温度或电流。"></textarea></label>
+      <button id="enter-range" class="primary">记录 90° 观察，进入范围探索</button>
+      <p id="range-hint" class="muted">进入条件：确认到位、无明显抖动和异常发热。声音单独记录，不自动判定故障。</p>
+    </div>
+  </section>
+  <details class="emotion-library"><summary>七类表情库 <span>用当前整组位置保存 neutral 与表情</span></summary>
+    <p class="muted">先保存 neutral；其他表情须使用同一组通道。预览不会驱动电机。</p>
+    <div class="inline"><select id="emotion" aria-label="情绪标签"><option value="neutral">中性 neutral</option><option value="happy">开心 happy</option><option value="sad">悲伤 sad</option><option value="angry">愤怒 angry</option><option value="fear">恐惧 fear</option><option value="disgust">厌恶 disgust</option><option value="surprise">惊讶 surprise</option></select><button id="emotion-save">保存当前整组</button><button id="emotion-preview">预览</button><button id="emotion-play">慢速重放</button><a href="/expressions.json" download>导出</a></div><div id="emotion-state" class="muted"></div>
+  </details>
+</main>
+<aside class="records">
+  <div class="section-label">03 / 位置记录</div><h2>留住这一刻。</h2><p class="muted">记录原始角度与观察，随时回看。</p>
+  <label>位置名称<input id="position-name" maxlength="80" placeholder="例如：下唇轻抬 / 起始位置"></label>
+  <label>记录类型<select id="position-kind"><option value="position">普通位置</option><option value="lower">下边界候选</option><option value="upper">上边界候选</option><option value="center">90° / 中心观察</option></select></label>
+  <button id="capture" class="primary wide">记录当前位置</button>
+  <p class="muted small">边界候选不会自动覆盖限位；有声、抖动、发热的位置也可记录为问题样本。</p>
+  <div class="records-heading"><span id="record-count">0 条记录</span><a href="/positions.json" download>导出 JSON ↗</a></div>
+  <div id="record-list"><p class="empty">还没有位置记录。完成 90° 检查后，慢慢移动，再记录角度与现象。</p></div>
+</aside>
+</div>
+<footer>指令角度 ≠ 实际轴角 <span>浏览器连接中断约 5 秒后尝试卸力 · 断串口时请断开舵机电源</span></footer>
+</body></html>
