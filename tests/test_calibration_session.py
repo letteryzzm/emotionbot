@@ -5,7 +5,7 @@ import pytest
 
 from head.calibration_session import PositionBook
 from head.pose_library import PoseError
-from test_tune_server import bench, sent, ts  # noqa: F401
+from test_tune_server import FakeLink, bench, sent, ts  # noqa: F401
 
 
 OBS = {"reached": "yes", "buzz": "no", "jitter": "no", "heat": "no", "text": "人工观察样例"}
@@ -37,6 +37,33 @@ def start(cal, names=("TON",), explore=True):
     return token
 
 
+@pytest.mark.parametrize("names", [["LLR"], ["LLL", "LLR"]])
+def test_default_llr_supports_manual_positions_and_expression_library(tmp_path, names):
+    b = ts.Bench({board: FakeLink(board) for board in ts.BOARDS}, log=lambda entry: None,
+                 settle=0, pace=0, library_path=tmp_path / "expressions.json", mode="sim")
+    b.log_path = tmp_path / "events.jsonl"
+    assert all(set(link.sent) == {"G"} for link in b.links.values())
+    assert "LLR" not in b.state()["blocked"] and "EXA" in b.state()["blocked"]
+    try:
+        b.cal_begin(names, manual=True)
+        token = b.cal["token"]
+        goal = {n: 92 if n == "LLR" else 88 for n in names}
+        b.cal_target(token, 1, goal)
+        wait_for(lambda: all(b.angles[n] == value for n, value in goal.items()))
+        with pytest.raises(PoseError):
+            b.cal_target(token, 2, {**goal, "LLR": 111})
+        b.cal_capture(token, "LLR 人工观察", {**OBS, "buzz": "yes"})
+        assert b.positions.data["records"][-1]["angles"] == goal
+        b.save_expression("neutral", revision=0)
+    finally:
+        b.relax()
+        if b.job:
+            b.job.join(2)
+    b.load_expression("neutral")
+    assert b.preview["angles"] == goal
+    assert all(sent(b, board)[-1] == "X" for board in ts.BOARDS)
+
+
 @pytest.mark.parametrize("names", [["TON"], ["LO", "RO"], ["TON", "LR", "LO"], ["JL", "JR"]])
 def test_single_pair_and_cross_board_group(cal, names):
     start(cal, names)
@@ -49,7 +76,7 @@ def test_single_pair_and_cross_board_group(cal, names):
 
 @pytest.mark.parametrize("names", [["EXA"], ["LLR"], ["TON", "LLR"], ["JL"], ["JR"]])
 def test_preflight_blocks_all_motion_on_invalid_selection(cal, names):
-    cal.blocked = dict(ts.BLOCKED)
+    cal.blocked = {**ts.BLOCKED, "LLR": "测试注入的故障隔离"}
     with pytest.raises((PoseError, ts.Refused)):
         cal.cal_begin(names)
     assert all(not sent(cal, b) for b in ts.BOARDS)
@@ -102,7 +129,7 @@ def test_manual_does_not_require_90_inside_verified_range(cal):
 
 @pytest.mark.parametrize("names", [["LLR"], ["EXA"], ["JL"]])
 def test_manual_preserves_channel_and_jaw_constraints(cal, names):
-    cal.blocked = dict(ts.BLOCKED)
+    cal.blocked = {**ts.BLOCKED, "LLR": "测试注入的故障隔离"}
     with pytest.raises((PoseError, ts.Refused)):
         cal.cal_begin(names, manual=True)
     assert all(not sent(cal, b) for b in ts.BOARDS)

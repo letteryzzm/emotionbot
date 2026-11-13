@@ -38,8 +38,8 @@ MAX_STEP = 5
 JAW_SKEW = 5   # JL + JR 偏离 180 的上限，两个 MG996R 不能互相顶
 SWING_AMPS = (15, 30)
 BOARDS = ("eyes", "brows", "mouth")
-# 现场故障隔离：修复并完成单轴检查后再解除，90° 不是机械安全位。
-BLOCKED = {"EXA": "未接舵机的备用通道", "LLR": "2026-11-11：90° 通电嗡嗡响，等待机械排查"}
+# 2026-11-13 用户要求恢复 LLR 普通标定；保留未接线通道隔离。
+BLOCKED = {"EXA": "未接舵机的备用通道"}
 
 # 从下到上，和 docs/舵机接线与上电检查.html 的嘴部图一致
 GROUPS = [
@@ -169,7 +169,7 @@ class Bench(CalibrationControls):
         self.error = ""
         self.mode = mode
         self.blocked = dict(BLOCKED if blocked is None else blocked)
-        self.llr_unloaded = llr_unloaded  # 本次启动显式确认已拆舵盘，只允许专用短时检查。
+        self.llr_unloaded = llr_unloaded  # 兼容专用短时检查入口，不影响普通标定权限。
         self.llr_probe = None
         self.library = PoseLibrary(library_path, mode=mode)
         self.preview = None
@@ -619,7 +619,7 @@ class Bench(CalibrationControls):
             self._record("note", servo=s, status=status, text=text)
 
     def probe_llr(self, duration=1.0, epoch=None):
-        """仅 LLR 空载到 90°，默认 1 秒、最多 30 秒后卸力；常规锁定保留。"""
+        """兼容空载检查：LLR 到 90°，默认 1 秒、最多 30 秒后卸力。"""
         duration = number(duration, "空载观察秒数", 0.2, 30)
         with self.lock:
             if epoch is not None and (type(epoch) is not int or epoch != self.cal_epoch):

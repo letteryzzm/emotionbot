@@ -410,7 +410,7 @@ def test_hold_cannot_energize_disabled_channel(bench):
                                     lambda b: b._ask("mouth", "R"),
                                     lambda b: b._start([{"UD": 120}, {"LLR": 90}])])
 def test_fault_quarantine_rejects_before_any_motor_write(bench, action):
-    bench.blocked = dict(ts.BLOCKED)
+    bench.blocked = {**ts.BLOCKED, "LLR": "测试注入的故障隔离"}
     with pytest.raises(ts.Refused, match="LLR|EXA"):
         action(bench)
     assert all(not sent(bench, board) for board in ts.BOARDS)
@@ -419,7 +419,7 @@ def test_fault_quarantine_rejects_before_any_motor_write(bench, action):
 def test_saved_pose_cannot_bypass_quarantine_and_release_still_works(bench):
     bench.enable_group(["LLL", "LLR"])
     bench.save_expression("neutral", revision=0)
-    bench.blocked = dict(ts.BLOCKED)
+    bench.blocked = {**ts.BLOCKED, "LLR": "测试注入的故障隔离"}
     before = {board: list(link.sent) for board, link in bench.links.items()}
     for action in (lambda: bench.load_expression("neutral"), lambda: bench.emotion("neutral"),
                    lambda: bench.save_expression("neutral", revision=1)):
@@ -439,7 +439,7 @@ def test_unloaded_probe_is_disabled_by_default(bench):
 
 
 def test_unloaded_probe_only_drives_llr_and_releases(bench):
-    bench.blocked = dict(ts.BLOCKED)
+    bench.blocked = {**ts.BLOCKED, "LLR": "测试注入的故障隔离"}
     bench.llr_unloaded = True
     bench.probe_llr()
     finish(bench)

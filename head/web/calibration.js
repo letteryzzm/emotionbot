@@ -136,7 +136,7 @@ function renderRecords() {
 }
 function render() {
   if (!state) return;
-  const cal = session(), mine = owned(), range = exploring(), diagnostic = selection.length===1 && selection[0]==='LLR';
+  const cal = session(), mine = owned(), range = exploring(), diagnostic = selection.length===1 && selection[0]==='LLR' && Boolean(state.blocked.LLR);
   const previous = state.calibration.last_session;
   const canRecordPrevious = !cal && previous?.token===lastToken && sameNames(previous.names);
   $('mode').textContent = state.mode==='sim'?'仿真 / 不连接电机':'真机 / ROG';
